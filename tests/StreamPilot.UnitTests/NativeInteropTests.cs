@@ -10,9 +10,13 @@ public sealed class NativeInteropTests
     [Fact]
     public void StructLayouts_MatchCHeader()
     {
-        Assert.Equal(7 * 4 + 4 + 4 * 8, Marshal.SizeOf<SpEngineConfig>()); // 7 uint32 + padding + 4 punteros
-        Assert.Equal(8 + 4 + 4 + 8, Marshal.SizeOf<SpRecordingConfig>());
-        Assert.Equal(8 + 8 + 4 * 4, Marshal.SizeOf<SpMetrics>());
+        Assert.Equal(8 * 4 + 4 * 8, Marshal.SizeOf<SpEngineConfig>());     // 8 uint32 + 4 punteros
+        Assert.Equal(24, Marshal.SizeOf<SpEncoderConfig>());                // puntero + 3 uint32 + relleno
+        Assert.Equal(8 + 24, Marshal.SizeOf<SpRecordingConfig>());
+        Assert.Equal(16 + 24, Marshal.SizeOf<SpStreamConfig>());
+        Assert.Equal(5 * 4 + 4 * 4, Marshal.SizeOf<SpTransform>());
+        Assert.Equal(5 * 4, Marshal.SizeOf<SpAudioLevels>());
+        Assert.Equal(88, Marshal.SizeOf<SpMetrics>());
     }
 
     [Fact]

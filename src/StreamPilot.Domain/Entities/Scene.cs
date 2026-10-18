@@ -18,16 +18,33 @@ public sealed class Scene(Guid id, string name)
         Name = name;
     }
 
-    public SceneItem AddItem(Guid sourceId, Transform? transform = null)
+    public SceneItem AddItem(Guid sourceId, Transform? transform = null, Guid? itemId = null)
     {
-        var item = new SceneItem(Guid.NewGuid(), sourceId, transform ?? Transform.Identity);
+        var item = new SceneItem(itemId ?? Guid.NewGuid(), sourceId, transform ?? Transform.Identity);
         _items.Add(item);
+        return item;
+    }
+
+    /// <summary>Reinserta un elemento existente (usado por deshacer).</summary>
+    public void InsertItem(SceneItem item, int index) => _items.Insert(Math.Clamp(index, 0, _items.Count), item);
+
+    public SceneItem GetItem(Guid itemId) =>
+        _items.FirstOrDefault(i => i.Id == itemId) ?? throw new KeyNotFoundException($"Elemento {itemId} no encontrado.");
+
+    public bool ContainsItem(Guid itemId) => _items.Any(i => i.Id == itemId);
+
+    public int IndexOf(Guid itemId) => _items.FindIndex(i => i.Id == itemId);
+
+    public SceneItem RemoveItem(Guid itemId)
+    {
+        var item = GetItem(itemId);
+        _items.Remove(item);
         return item;
     }
 
     public void MoveItem(Guid itemId, int newIndex)
     {
-        var item = _items.FirstOrDefault(i => i.Id == itemId) ?? throw new KeyNotFoundException($"Elemento {itemId} no encontrado.");
+        var item = GetItem(itemId);
         _items.Remove(item);
         _items.Insert(Math.Clamp(newIndex, 0, _items.Count), item);
     }

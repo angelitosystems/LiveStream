@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\StreamPilot.Application\StreamPilot.Application.csproj" />
     <ProjectReference Include="..\..\src\StreamPilot.Native\StreamPilot.Native.csproj" />
+    <ProjectReference Include="..\..\src\StreamPilot.Infrastructure\StreamPilot.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

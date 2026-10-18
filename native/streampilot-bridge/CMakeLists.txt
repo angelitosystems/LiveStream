@@ -13,7 +13,7 @@ set(OBS_IMPORT_LIB "" CACHE FILEPATH "obs.lib generada desde obs.dll")
 
 add_library(streampilot_bridge SHARED src/bridge.cpp)
 target_include_directories(streampilot_bridge PUBLIC include)
-target_compile_definitions(streampilot_bridge PRIVATE SP_BRIDGE_EXPORTS NOMINMAX)
+target_compile_definitions(streampilot_bridge PRIVATE SP_BRIDGE_EXPORTS NOMINMAX _WIN32_WINNT=0x0A00)
 
 if(OBS_INCLUDE_DIR AND OBS_IMPORT_LIB)
   # obsconfig.h lo genera el build de OBS; con headers sueltos lo generamos con los valores de Windows.
@@ -29,6 +29,9 @@ endif()
 
 if(MSVC)
   target_compile_options(streampilot_bridge PRIVATE /W4 /WX /utf-8)
+endif()
+if(WIN32)
+  target_link_libraries(streampilot_bridge PRIVATE rtworkq)
 endif()
 
 # Herramienta de diagnóstico del subsistema gráfico (no se distribuye).
