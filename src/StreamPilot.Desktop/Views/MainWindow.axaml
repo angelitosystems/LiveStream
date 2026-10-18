@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:StreamPilot.Desktop.ViewModels"
+        xmlns:c="using:StreamPilot.Desktop.Components"
+        xmlns:v="using:StreamPilot.Domain.ValueObjects"
+        x:Class="StreamPilot.Desktop.Views.MainWindow"
+        x:DataType="vm:EngineSpikeViewModel"
+        Title="StreamPilot — Spike de motor"
+        Width="1280" Height="800">
+  <Grid ColumnDefinitions="*,320" RowDefinitions="*,Auto">
+    <Border Grid.Column="0" Grid.Row="0" Margin="12" Background="Black" CornerRadius="6">
+      <c:PreviewHost x:Name="Preview" />
+    </Border>
+
+    <StackPanel Grid.Column="1" Grid.Row="0" Margin="0,12,12,12" Spacing="10">
+      <TextBlock Text="Spike Fase 1" FontSize="18" FontWeight="SemiBold" />
+      <Button Content="1. Inicializar libobs" Command="{Binding InitializeCommand}"
+              IsEnabled="{Binding BridgeAvailable}" HorizontalAlignment="Stretch" />
+      <Button Content="2. Crear escena (cámara + micrófono)" Command="{Binding BuildSceneCommand}"
+              HorizontalAlignment="Stretch" />
+      <Button Content="3. Grabar 30 segundos" Command="{Binding RecordTestCommand}"
+              HorizontalAlignment="Stretch" />
+
+      <TextBlock Text="Dispositivos" FontWeight="SemiBold" Margin="0,8,0,0" />
+      <ListBox ItemsSource="{Binding Devices}" Height="160">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="v:CaptureDevice">
+            <TextBlock>
+              <Run Text="{Binding Kind}" FontWeight="SemiBold" />
+              <Run Text=" · " />
+              <Run Text="{Binding Name}" />
+            </TextBlock>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <TextBlock Text="Registro" FontWeight="SemiBold" />
+      <ListBox ItemsSource="{Binding LogLines}" Height="220" FontFamily="Consolas" FontSize="11" />
+    </StackPanel>
+
+    <Border Grid.Row="1" Grid.ColumnSpan="2" Padding="12,6" Background="#202020">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Right" Text="{Binding MetricsText}" Opacity="0.8" />
+        <TextBlock Text="{Binding Status}" TextTrimming="CharacterEllipsis" />
+      </DockPanel>
+    </Border>
+  </Grid>
+</Window>

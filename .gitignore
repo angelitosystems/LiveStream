@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+native/**/build/
+third_party/
+artifacts/
+*.mkv
+*.mp4
