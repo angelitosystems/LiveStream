@@ -32,7 +32,7 @@
 extern "C" {
 #endif
 
-#define SP_ABI_VERSION 1u
+#define SP_ABI_VERSION 2u
 
 typedef enum sp_result {
     SP_OK = 0,
@@ -75,6 +75,7 @@ typedef struct sp_engine_config {
     const char *module_bin_dir;   /* p. ej. <app>/obs-plugins/64bit */
     const char *module_data_dir;  /* p. ej. <app>/data/obs-plugins/%module% */
     const char *libobs_data_dir;  /* p. ej. <app>/data/libobs */
+    const char *module_config_dir; /* configuración que escriben los plugins, p. ej. %APPDATA%/StreamPilot/plugin_config */
 } sp_engine_config;
 
 typedef struct sp_recording_config {
@@ -104,7 +105,8 @@ SP_API int32_t SP_CALL sp_last_error(char *buffer, int32_t buffer_size);
 /* Debe llamarse antes de sp_engine_create. El callback puede invocarse desde cualquier hilo. */
 SP_API void SP_CALL sp_set_log_callback(sp_log_callback callback, void *user_data);
 
-/* libobs es un singleton por proceso: solo puede existir un sp_engine a la vez. */
+/* libobs es un singleton por proceso: solo puede existir un sp_engine a la vez y, una vez destruido,
+ * no puede crearse otro en el mismo proceso (devuelve SP_ERR_INVALID_STATE). */
 SP_API sp_result SP_CALL sp_engine_create(const sp_engine_config *config, sp_engine **out_engine);
 SP_API void SP_CALL sp_engine_destroy(sp_engine *engine);
 

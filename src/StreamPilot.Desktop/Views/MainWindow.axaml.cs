@@ -22,6 +22,15 @@ public sealed partial class MainWindow : Window
                 // El motor ya se apagó; sp_engine_destroy también libera la vista previa.
             }
         };
+
+        // --autostart ejecuta el flujo del spike sin interacción (verificación y demos reproducibles).
+        if (Environment.GetCommandLineArgs().Contains("--autostart"))
+            Opened += async (_, _) =>
+            {
+                await Vm.InitializeCommand.ExecuteAsync(null);
+                if (Vm.BuildSceneCommand.CanExecute(null))
+                    await Vm.BuildSceneCommand.ExecuteAsync(null);
+            };
     }
 
     private EngineSpikeViewModel Vm => (EngineSpikeViewModel)DataContext!;

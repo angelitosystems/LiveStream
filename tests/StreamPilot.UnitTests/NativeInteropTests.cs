@@ -10,7 +10,7 @@ public sealed class NativeInteropTests
     [Fact]
     public void StructLayouts_MatchCHeader()
     {
-        Assert.Equal(7 * 4 + 4 + 3 * 8, Marshal.SizeOf<SpEngineConfig>()); // 7 uint32 + padding + 3 punteros
+        Assert.Equal(7 * 4 + 4 + 4 * 8, Marshal.SizeOf<SpEngineConfig>()); // 7 uint32 + padding + 4 punteros
         Assert.Equal(8 + 4 + 4 + 8, Marshal.SizeOf<SpRecordingConfig>());
         Assert.Equal(8 + 8 + 4 * 4, Marshal.SizeOf<SpMetrics>());
     }

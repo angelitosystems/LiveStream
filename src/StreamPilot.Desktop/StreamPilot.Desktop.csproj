@@ -15,8 +15,5 @@
     <ProjectReference Include="..\StreamPilot.Application\StreamPilot.Application.csproj" />
     <ProjectReference Include="..\StreamPilot.Native\StreamPilot.Native.csproj" />
   </ItemGroup>
-  <!-- Runtime de libobs + puente, producido por scripts/build-native.ps1. Opcional mientras no exista. -->
-  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\artifacts\obs-runtime')">
-    <None Include="$(MSBuildThisFileDirectory)..\..\artifacts\obs-runtime\**\*" LinkBase="" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+  <Import Project="..\..\build\ObsRuntime.targets" />
 </Project>

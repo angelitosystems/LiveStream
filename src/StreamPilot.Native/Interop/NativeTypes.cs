@@ -47,6 +47,7 @@ internal struct SpEngineConfig
     public nint ModuleBinDir;
     public nint ModuleDataDir;
     public nint LibobsDataDir;
+    public nint ModuleConfigDir;
 }
 
 [StructLayout(LayoutKind.Sequential)]

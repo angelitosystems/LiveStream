@@ -14,6 +14,10 @@ internal sealed class NativeDispatcher : IDisposable
     public NativeDispatcher(string name)
     {
         _thread = new Thread(Run) { IsBackground = true, Name = name };
+        // libobs inicializa COM en modo STA (como el hilo principal de OBS); en MTA obs_startup
+        // falla con RPC_E_CHANGED_MODE.
+        if (OperatingSystem.IsWindows())
+            _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
     }
 

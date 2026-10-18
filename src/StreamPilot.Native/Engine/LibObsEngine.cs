@@ -58,6 +58,19 @@ public sealed class LibObsEngine : IStreamingEngine
         }
 
         var appDir = AppContext.BaseDirectory;
+        var dataDir = settings.DataDirectory ?? Path.Combine(appDir, "data");
+
+        // libobs y varios plugins (p. ej. los hooks de win-capture) resuelven "..\..\data" y
+        // "..\..\obs-plugins\64bit" respecto al directorio de trabajo, porque OBS se ejecuta desde
+        // bin\64bit. Se fija un directorio ancla dos niveles por debajo de la raíz de la app para
+        // reproducir esa estructura. La app solo usa rutas absolutas, así que el cambio es seguro.
+        var useDefaultLayout = settings.ModulesDirectory is null && settings.DataDirectory is null;
+        if (useDefaultLayout)
+        {
+            var anchor = Directory.CreateDirectory(Path.Combine(appDir, "obs-anchor", "64bit")).FullName;
+            Directory.SetCurrentDirectory(anchor);
+        }
+
         using var pin = new Utf8Pin();
         var config = new SpEngineConfig
         {
@@ -68,9 +81,12 @@ public sealed class LibObsEngine : IStreamingEngine
             FpsNum = (uint)settings.FpsNumerator,
             FpsDen = (uint)settings.FpsDenominator,
             AudioSampleRate = (uint)settings.AudioSampleRate,
-            ModuleBinDir = pin.Add(settings.ModulesDirectory ?? Path.Combine(appDir, "obs-plugins", "64bit")),
-            ModuleDataDir = pin.Add(Path.Combine(settings.DataDirectory ?? Path.Combine(appDir, "data"), "obs-plugins", "%module%")),
-            LibobsDataDir = pin.Add(Path.Combine(settings.DataDirectory ?? Path.Combine(appDir, "data"), "libobs") + Path.DirectorySeparatorChar),
+            // Con la estructura por defecto libobs ya registra estas rutas; añadirlas otra vez duplicaría módulos.
+            ModuleBinDir = useDefaultLayout ? 0 : pin.Add(ObsPath(settings.ModulesDirectory ?? Path.Combine(appDir, "obs-plugins", "64bit"))),
+            ModuleDataDir = useDefaultLayout ? 0 : pin.Add(ObsPath(Path.Combine(dataDir, "obs-plugins", "%module%"))),
+            LibobsDataDir = pin.Add(ObsPath(Path.Combine(dataDir, "libobs")) + "/"),
+            ModuleConfigDir = pin.Add(ObsPath(Directory.CreateDirectory(settings.ConfigDirectory ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StreamPilot", "plugin_config")).FullName)),
         };
 
         Check(NativeMethods.EngineCreate(in config, out var engine), "sp_engine_create");
@@ -115,7 +131,7 @@ public sealed class LibObsEngine : IStreamingEngine
         using var pin = new Utf8Pin();
         var config = new SpRecordingConfig
         {
-            OutputPath = pin.Add(Path.GetFullPath(settings.OutputPath)),
+            OutputPath = pin.Add(ObsPath(settings.OutputPath)),
             VideoBitrateKbps = (uint)settings.VideoBitrateKbps,
             AudioBitrateKbps = (uint)settings.AudioBitrateKbps,
             VideoEncoderId = pin.Add(settings.Encoder),
@@ -156,6 +172,12 @@ public sealed class LibObsEngine : IStreamingEngine
         await ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
         _dispatcher.Dispose();
     }
+
+    /// <summary>
+    /// libobs solo reconoce '/' como separador al resolver directorios (p. ej. los #include de los .effect),
+    /// así que toda ruta que se le entregue debe usar barras normales.
+    /// </summary>
+    internal static string ObsPath(string path) => Path.GetFullPath(path).Replace('\\', '/');
 
     private EngineSafeHandle RequireEngine() =>
         IsInitialized ? _engine! : throw new InvalidOperationException("El motor no está inicializado.");

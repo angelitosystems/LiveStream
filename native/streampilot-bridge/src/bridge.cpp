@@ -21,6 +21,10 @@ namespace {
 
 thread_local std::string g_last_error;
 std::atomic<bool> g_engine_alive{false};
+// libobs y sus plugins mantienen estado estático: tras obs_shutdown no se puede volver a iniciar en el
+// mismo proceso (OBS Studio tampoco lo hace). Un reinicio del motor implica reiniciar el proceso o
+// usar un EngineHost separado.
+std::atomic<bool> g_engine_was_shutdown{false};
 sp_log_callback g_log_callback = nullptr;
 void *g_log_user_data = nullptr;
 
@@ -62,6 +66,36 @@ const char *pick_video_encoder(const char *requested)
             return id;
     }
     return nullptr;
+}
+
+// libobs no informa por qué falla un efecto base al iniciar el video. Se reproduce la creación
+// del dispositivo y de los efectos pidiendo el texto del error para incluirlo en el mensaje.
+std::string diagnose_graphics(const char *module)
+{
+    graphics_t *graphics = nullptr;
+    const int rc = gs_create(&graphics, module, 0);
+    if (rc != GS_SUCCESS)
+        return " | gs_create=" + std::to_string(rc);
+
+    std::string report;
+    gs_enter_context(graphics);
+    for (const char *name : {"default.effect", "opaque.effect", "solid.effect", "format_conversion.effect",
+                             "premultiplied_alpha.effect"}) {
+        char *path = obs_find_data_file(name);
+        if (!path) {
+            report += std::string(" | no encontrado: ") + name;
+            continue;
+        }
+        char *error = nullptr;
+        gs_effect_t *effect = gs_effect_create_from_file(path, &error);
+        if (!effect)
+            report += std::string(" | ") + name + ": " + (error ? error : "sin detalle");
+        bfree(error);
+        bfree(path);
+    }
+    gs_leave_context();
+    gs_destroy(graphics);
+    return report.empty() ? " | efectos base OK" : report;
 }
 
 template<typename Fn> sp_result guarded(Fn &&fn)
@@ -159,22 +193,44 @@ sp_result SP_CALL sp_engine_create(const sp_engine_config *config, sp_engine **o
             return fail(SP_ERR_INVALID_ARG, "config y out_engine son obligatorios.");
         *out_engine = nullptr;
 
+        if (g_engine_was_shutdown)
+            return fail(SP_ERR_INVALID_STATE,
+                        "libobs no admite reiniciarse en el mismo proceso; reinicia la aplicación.");
         bool expected = false;
         if (!g_engine_alive.compare_exchange_strong(expected, true))
             return fail(SP_ERR_ALREADY_INITIALIZED, "libobs ya está inicializado en este proceso.");
 
         auto abort_startup = [](sp_result code, const char *msg) {
-            if (obs_initialized())
+            if (obs_initialized()) {
                 obs_shutdown();
+                g_engine_was_shutdown = true;
+            }
             g_engine_alive = false;
             return fail(code, msg);
         };
 
-        if (config->libobs_data_dir)
+        // Obsoleta desde OBS 31 pero sigue exportada y es la única forma de ubicar data/libobs
+        // cuando el ejecutable no vive en bin/64bit como en la distribución de OBS.
+        if (config->libobs_data_dir) {
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
             obs_add_data_path(config->libobs_data_dir);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+        }
 
-        if (!obs_startup("es-ES", nullptr, nullptr))
+        // Sin module_config_dir los plugins escriben su configuración en el directorio de trabajo.
+        if (!obs_startup("es-ES", config->module_config_dir, nullptr))
             return abort_startup(SP_ERR_STARTUP_FAILED, "obs_startup falló.");
+
+        char *effect = obs_find_data_file("default.effect");
+        if (!effect)
+            return abort_startup(SP_ERR_STARTUP_FAILED, "No se encontró data/libobs/default.effect.");
+        blog(LOG_INFO, "[streampilot] libobs data: %s", effect);
+        bfree(effect);
 
         obs_audio_info oai{};
         oai.samples_per_sec = config->audio_sample_rate ? config->audio_sample_rate : 48000;
@@ -197,9 +253,11 @@ sp_result SP_CALL sp_engine_create(const sp_engine_config *config, sp_engine **o
         ovi.range = VIDEO_RANGE_PARTIAL;
         ovi.scale_type = OBS_SCALE_BICUBIC;
         const int video = obs_reset_video(&ovi);
-        if (video != OBS_VIDEO_SUCCESS)
-            return abort_startup(SP_ERR_VIDEO_RESET_FAILED,
-                                 ("obs_reset_video falló con código " + std::to_string(video)).c_str());
+        if (video != OBS_VIDEO_SUCCESS) {
+            std::string detail = "obs_reset_video falló con código " + std::to_string(video);
+            detail += diagnose_graphics(ovi.graphics_module);
+            return abort_startup(SP_ERR_VIDEO_RESET_FAILED, detail.c_str());
+        }
 
         // Los módulos se cargan después de inicializar audio y video.
         if (config->module_bin_dir && config->module_data_dir)
@@ -223,14 +281,32 @@ void SP_CALL sp_engine_destroy(sp_engine *engine)
             obs_output_force_stop(engine->recording);
         engine->release_recording();
 
+        // Igual que el cierre de OBS Studio: quitar la salida de programa, retirar escenas (lo que suelta
+        // sus elementos) y fuentes, y esperar a que los hilos de audio/video y la cola de destrucción
+        // terminen. Si win-wasapi se descarga con una fuente viva, su hilo de captura accede a código
+        // ya liberado y el proceso se cae de forma intermitente.
         obs_set_output_source(0, nullptr);
-        for (auto &[_, source] : engine->sources)
-            obs_source_release(source);
-        for (auto &[_, scene] : engine->scenes)
+        for (auto &[id, scene] : engine->scenes) {
+            obs_source_t *scene_source = obs_scene_get_source(scene);
+            obs_source_remove(scene_source);
             obs_scene_release(scene);
+        }
+        for (auto &[id, source] : engine->sources) {
+            obs_source_remove(source);
+            obs_source_release(source);
+        }
         delete engine;
 
+        // Dos pasadas: la destrucción de una escena encola la de sus fuentes.
+        obs_wait_for_destroy_queue();
+        obs_wait_for_destroy_queue();
         obs_shutdown();
+        g_engine_was_shutdown = true;
+        // libobs sigue registrando mensajes al descargarse (fugas de memoria, DllMain). Si el handler
+        // apunta a código administrado y el runtime .NET ya está cerrándose, el proceso se cae.
+        base_set_log_handler(nullptr, nullptr);
+        g_log_callback = nullptr;
+        g_log_user_data = nullptr;
     } catch (...) {
         // El destructor no puede propagar errores a través del ABI.
     }

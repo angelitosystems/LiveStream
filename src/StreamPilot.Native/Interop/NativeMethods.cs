@@ -8,7 +8,7 @@ namespace StreamPilot.Native.Interop;
 internal static partial class NativeMethods
 {
     public const string Library = "streampilot_bridge";
-    public const uint ExpectedAbiVersion = 1;
+    public const uint ExpectedAbiVersion = 2;
 
     [LibraryImport(Library, EntryPoint = "sp_abi_version")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

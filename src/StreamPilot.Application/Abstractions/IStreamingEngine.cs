@@ -32,7 +32,8 @@ public sealed record EngineSettings(
     int FpsDenominator = 1,
     int AudioSampleRate = 48000,
     string? ModulesDirectory = null,
-    string? DataDirectory = null);
+    string? DataDirectory = null,
+    string? ConfigDirectory = null);
 
 public sealed record SourceDefinition(Guid Id, string Name, SourceKind Kind, IReadOnlyDictionary<string, string> Settings)
 {
