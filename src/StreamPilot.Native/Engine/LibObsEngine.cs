@@ -115,7 +115,8 @@ public sealed class LibObsEngine : IStreamingEngine, IEngineDisplays
         Check(NativeMethods.MetricsGet(e, out var m), "sp_metrics_get");
         return new EngineMetrics(m.ActiveFps, m.AverageFrameRenderMs, m.TotalFrames, m.LaggedFrames, m.SkippedEncoderFrames,
             m.IsRecording != 0, m.CpuUsagePercent, m.MemoryBytes, m.EncodedFrames, m.IsStreaming != 0, m.StreamReconnecting != 0,
-            m.StreamDroppedFrames, m.StreamTotalFrames, m.StreamTotalBytes, m.RecordingTotalBytes);
+            m.StreamDroppedFrames, m.StreamTotalFrames, m.StreamTotalBytes, m.RecordingTotalBytes,
+            m.StreamCongestion, (int)m.StreamVideoBitrateKbps, m.StreamDynamicBitrate != 0, (int)m.RenderAdapterIndex);
     }, ct);
 
     public Task<IReadOnlyList<CaptureDevice>> ListDevicesAsync(CancellationToken ct) => Run<IReadOnlyList<CaptureDevice>>(e =>
@@ -372,6 +373,41 @@ public sealed class LibObsEngine : IStreamingEngine, IEngineDisplays
         var config = new SpStreamConfig { Server = pin.Add(target.Server), Key = pin.Add(target.Key), Encoder = Encoder(pin, target.Encoder) };
         Check(NativeMethods.StreamStart(e, in config), "sp_stream_start");
     }, ct);
+
+    public Task SetStreamVideoBitrateAsync(int kbps, CancellationToken ct) =>
+        Run(e => Check(NativeMethods.StreamSetVideoBitrate(e, (uint)kbps), "sp_stream_set_video_bitrate"), ct);
+
+    public Task<bool> SupportsDynamicBitrateAsync(string encoderId, CancellationToken ct) => Run(e =>
+    {
+        Check(NativeMethods.VideoEncoderDynamicBitrate(e, encoderId, out var supported), "sp_video_encoder_dynamic_bitrate");
+        return supported != 0;
+    }, ct);
+
+    /// <summary>Adaptadores gráficos en el orden de libobs. No necesita el motor iniciado.</summary>
+    public static IReadOnlyList<GraphicsAdapter> ListAdapters()
+    {
+        var adapters = new List<GraphicsAdapter>();
+        var handle = GCHandle.Alloc(adapters);
+        try
+        {
+            unsafe
+            {
+                Check(NativeMethods.AdaptersEnumerate(&OnAdapter, GCHandle.ToIntPtr(handle)), "sp_adapters_enumerate");
+            }
+        }
+        finally
+        {
+            handle.Free();
+        }
+        return adapters;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnAdapter(uint index, byte* name, uint vendor, ulong memory, int software, nint userData)
+    {
+        var adapters = (List<GraphicsAdapter>)GCHandle.FromIntPtr(userData).Target!;
+        adapters.Add(new GraphicsAdapter((int)index, Marshal.PtrToStringUTF8((nint)name) ?? "", vendor, memory, software != 0));
+    }
 
     public Task StopStreamAsync(CancellationToken ct) =>
         Run(e => Check(NativeMethods.StreamStop(e), "sp_stream_stop"), ct);

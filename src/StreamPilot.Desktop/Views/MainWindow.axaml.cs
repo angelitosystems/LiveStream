@@ -150,6 +150,8 @@ public sealed partial class MainWindow : Window
     private async void OnAddGraphicFromTemplate(object? sender, RoutedEventArgs e) =>
         await Guard("Plantillas", () => ProductionDialogs.ShowTemplatePickerAsync(Vm));
 
+    private void OnPerformance(object? sender, RoutedEventArgs e) => PerformanceWindow.Show(Vm);
+
     private async void OnSettings(object? sender, RoutedEventArgs e) => await Guard("Ajustes", () => StudioDialogs.ShowSettingsAsync(Vm));
 
     /// <summary>Los manejadores async void no pueden propagar errores: se registran y se muestran.</summary>

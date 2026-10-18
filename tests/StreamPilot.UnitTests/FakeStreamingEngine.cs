@@ -124,6 +124,14 @@ internal sealed class FakeStreamingEngine : IStreamingEngine
     public Task StopRecordingAsync(CancellationToken ct) => Do("rec-", () => { });
     public Task StartStreamAsync(StreamTarget target, CancellationToken ct) => Do("stream+", () => LastStream = target);
     public Task StopStreamAsync(CancellationToken ct) => Do("stream-", () => { });
+    public List<int> BitrateChanges { get; } = [];
+    public bool DynamicBitrate { get; set; } = true;
+    public Task SetStreamVideoBitrateAsync(int kbps, CancellationToken ct) => Do("bitrate", () =>
+    {
+        if (!DynamicBitrate) throw new InvalidOperationException("Sin bitrate dinámico.");
+        BitrateChanges.Add(kbps);
+    });
+    public Task<bool> SupportsDynamicBitrateAsync(string encoderId, CancellationToken ct) => Task.FromResult(DynamicBitrate);
     public Task<OutputStopInfo> GetLastStopAsync(OutputKind kind, CancellationToken ct) => Task.FromResult(new OutputStopInfo(0, ""));
 
     private Task Do(string call, Action action)

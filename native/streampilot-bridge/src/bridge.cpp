@@ -12,6 +12,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <rtworkq.h>
+#include <dxgi.h>
 #endif
 
 #include <algorithm>
@@ -557,6 +558,7 @@ struct sp_engine {
     output_set stream;
 
     os_cpu_usage_info_t *cpu = nullptr;
+    uint32_t adapter_index = 0;
 
     obs_source_t *find_source(const char *id)
     {
@@ -933,6 +935,7 @@ sp_result SP_CALL sp_engine_create(const sp_engine_config *config, sp_engine **o
 
         auto *engine = new sp_engine();
         engine->cpu = os_cpu_usage_info_start();
+        engine->adapter_index = config->adapter_index;
         // Transición inicial: corte. El programa siempre se emite a través de una transición.
         engine->transition = obs_source_create_private("cut_transition", "sp_transition", nullptr);
         if (engine->transition)
@@ -1035,6 +1038,17 @@ sp_result SP_CALL sp_metrics_get(sp_engine *engine, sp_metrics *m)
         m->is_streaming = engine->stream.active() ? 1 : 0;
         if (engine->recording.output)
             m->recording_total_bytes = obs_output_get_total_bytes(engine->recording.output);
+        m->render_adapter_index = engine->adapter_index;
+        if (engine->stream.active()) {
+            m->stream_congestion = obs_output_get_congestion(engine->stream.output);
+            if (engine->stream.video_encoder) {
+                obs_data_t *s = obs_encoder_get_settings(engine->stream.video_encoder);
+                m->stream_video_bitrate_kbps = static_cast<uint32_t>(obs_data_get_int(s, "bitrate"));
+                obs_data_release(s);
+                m->stream_dynamic_bitrate =
+                    (obs_get_encoder_caps(obs_encoder_get_id(engine->stream.video_encoder)) & OBS_ENCODER_CAP_DYN_BITRATE) ? 1 : 0;
+            }
+        }
         if (engine->stream.output) {
             m->stream_reconnecting = obs_output_reconnecting(engine->stream.output) ? 1 : 0;
             m->stream_dropped_frames = static_cast<uint32_t>(obs_output_get_frames_dropped(engine->stream.output));
@@ -2087,6 +2101,60 @@ sp_result SP_CALL sp_anim_is_playing(sp_engine *engine, const char *item_id, int
         SP_REQUIRE(engine && item_id && playing, "engine, item_id y playing son obligatorios.");
         std::lock_guard lock(engine->anim_mutex);
         *playing = engine->anims.count(item_id) ? 1 : 0;
+        return SP_OK;
+    });
+}
+
+// ---- Optimización ---------------------------------------------------------------------------------
+
+sp_result SP_CALL sp_stream_set_video_bitrate(sp_engine *engine, uint32_t kbps)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine, "engine es obligatorio.");
+        SP_REQUIRE(kbps >= 200 && kbps <= 150000, "Bitrate fuera de rango (200..150000 kb/s).");
+        if (!engine->stream.active() || !engine->stream.video_encoder)
+            return fail(SP_ERR_INVALID_STATE, "No hay ninguna transmisión activa.");
+        obs_encoder_t *encoder = engine->stream.video_encoder;
+        if (!(obs_get_encoder_caps(obs_encoder_get_id(encoder)) & OBS_ENCODER_CAP_DYN_BITRATE))
+            return fail(SP_ERR_INVALID_STATE, "El codificador de la emisión no admite cambiar el bitrate en directo.");
+        obs_data_t *settings = obs_data_create();
+        obs_data_set_int(settings, "bitrate", kbps);
+        obs_encoder_update(encoder, settings);
+        obs_data_release(settings);
+        return SP_OK;
+    });
+}
+
+sp_result SP_CALL sp_video_encoder_dynamic_bitrate(sp_engine *engine, const char *encoder_id, int32_t *supported)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && encoder_id && supported, "engine, encoder_id y supported son obligatorios.");
+        if (obs_get_encoder_type(encoder_id) != OBS_ENCODER_VIDEO)
+            return fail(SP_ERR_NOT_FOUND, std::string("Codificador de video desconocido: ") + encoder_id);
+        *supported = (obs_get_encoder_caps(encoder_id) & OBS_ENCODER_CAP_DYN_BITRATE) ? 1 : 0;
+        return SP_OK;
+    });
+}
+
+sp_result SP_CALL sp_adapters_enumerate(sp_adapter_callback callback, void *user_data)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(callback, "callback es obligatorio.");
+        IDXGIFactory1 *factory = nullptr;
+        if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void **>(&factory))))
+            return fail(SP_ERR_CREATE_FAILED, "CreateDXGIFactory1 falló.");
+        IDXGIAdapter1 *adapter = nullptr;
+        for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
+            DXGI_ADAPTER_DESC1 desc{};
+            if (SUCCEEDED(adapter->GetDesc1(&desc))) {
+                char name[256]{};
+                WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name, sizeof(name) - 1, nullptr, nullptr);
+                callback(i, name, desc.VendorId, desc.DedicatedVideoMemory,
+                         (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) ? 1 : 0, user_data);
+            }
+            adapter->Release();
+        }
+        factory->Release();
         return SP_OK;
     });
 }

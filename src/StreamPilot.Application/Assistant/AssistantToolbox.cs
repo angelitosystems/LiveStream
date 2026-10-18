@@ -90,8 +90,13 @@ public sealed class AssistantToolbox
         ["alert"] = GraphicKind.Alert,
     };
 
-    public AssistantToolbox(StudioSession session, IOutputController outputs, Func<AssistantConfirmation, Task<bool>> confirm)
+    private readonly Func<string>? _performanceReport;
+
+    /// <param name="performanceReport">Informe del optimizador (Fase 5); null si no hay optimizador.</param>
+    public AssistantToolbox(StudioSession session, IOutputController outputs, Func<AssistantConfirmation, Task<bool>> confirm,
+        Func<string>? performanceReport = null)
     {
+        _performanceReport = performanceReport;
         _session = session;
         _outputs = outputs;
         _confirm = confirm;
@@ -141,6 +146,12 @@ public sealed class AssistantToolbox
         Add("get_studio_state",
             "Estado actual del estudio: escenas y sus fuentes (con posición), audio, gráficos, transición, lienzo y si se está grabando o emitiendo. Consúltalo antes de modificar algo si no conoces los nombres exactos.",
             Object(), ToolPermission.Read, (_, _) => Task.FromResult(Ok(StudioState(), "Consultó el estado del estudio")));
+        Add("get_performance_report",
+            "Rendimiento en directo: bitrate de emisión y objetivo, pérdidas de red, congestión, retraso de render, fotogramas descartados al codificar y las últimas decisiones del optimizador con su motivo. Úsalo para explicar problemas de calidad; los ajustes los decide el optimizador o el usuario.",
+            Object(), ToolPermission.Read,
+            (_, _) => Task.FromResult(_performanceReport is null
+                ? Fail("El optimizador no está disponible.")
+                : Ok(_performanceReport(), "Consultó el rendimiento")));
         Add("list_capture_devices", "Lista cámaras, micrófonos, salidas de audio y monitores disponibles, con su id.",
             Object(), ToolPermission.Read, ListDevicesAsync);
 

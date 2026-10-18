@@ -48,6 +48,7 @@ public sealed class LibObsEngineTests(ITestOutputHelper output)
                 var production = new ProductionFeatures(engine, output);
                 await production.RunAsync();
                 await StreamFailureIsReportedAsync(engine);
+                await new OptimizationFeatures(engine, output).RunAsync();
                 await engine.ShutdownAsync(None);
                 Assert.False(engine.IsInitialized);
                 production.FilesToDelete.ForEach(File.Delete);

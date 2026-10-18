@@ -31,7 +31,7 @@ if(MSVC)
   target_compile_options(streampilot_bridge PRIVATE /W4 /WX /utf-8)
 endif()
 if(WIN32)
-  target_link_libraries(streampilot_bridge PRIVATE rtworkq)
+  target_link_libraries(streampilot_bridge PRIVATE rtworkq dxgi)
 endif()
 
 # Herramienta de diagnóstico del subsistema gráfico (no se distribuye).

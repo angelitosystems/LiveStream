@@ -1,6 +1,6 @@
 # Estado real del proyecto
 
-Actualizado al cierre de la **Fase 4 — Asistente IA**. Solo se marca como hecho lo verificado contra libobs real
+Actualizado al cierre de la **Fase 5 — Optimización**. Solo se marca como hecho lo verificado contra libobs real
 en esta máquina (i7-13650HX, Intel UHD + RTX 4050 Laptop, Windows 11, pantalla al 125 %).
 
 ## Fase 1 — Motor (completada)
@@ -76,6 +76,20 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 3. **Grabar/emitir** tenían su lógica dentro de los botones; ahora botones y asistente comparten el mismo camino
    (`IOutputController`), con las confirmaciones en cada llamador.
 
+## Fase 5 — Optimización (completada, con las limitaciones de abajo)
+
+| Área | Implementado | Verificación |
+|---|---|---|
+| Puente ABI v5 | Métricas de congestión de la emisión, bitrate actual, si el encoder admite bitrate dinámico y adaptador de render; cambio de bitrate en directo (`obs_encoder_update`, solo con `OBS_ENCODER_CAP_DYN_BITRATE`); enumeración de adaptadores DXGI en el orden de libobs | Integración: emisión real a un servidor RTMP local (ffmpeg), bitrate 1500 → 900 kb/s sin cortar la emisión y 0 fotogramas perdidos |
+| Hardware | CPU (registro de Windows), hilos, memoria, GPUs con fabricante y memoria dedicada, codificadores del runtime clasificados (CPU / NVIDIA / Intel / AMD) con soporte de bitrate dinámico | En este equipo: i7-13650HX, 15.7 GB, Intel UHD (renderizaba), RTX 4050 Laptop |
+| Benchmark | Graba el programa real unos segundos con cada codificador H.264 y mide fotogramas descartados, retraso de render y CPU; archivos temporales borrados | App real: NVENC, QuickSync y x264 medidos |
+| Perfiles | Recomendador determinista: codificador por hardware sano con menos CPU, bitrate por resolución/FPS, grabación a 2,5×, GPU de render del mismo fabricante que el codificador, lienzo más ligero si nada aguanta. Nada se aplica sin autorización; los perfiles de salida se pueden revertir desde el registro | Pruebas unitarias; en la app, cambio a la RTX 4050 con reinicio: el motor arrancó en ella, la captura WGC se ve y el render bajó a 1,2 ms |
+| Bitrate adaptativo | Controlador con medias móviles, umbrales distintos para bajar (pérdidas > 2 % o congestión > 50 %) y subir (< 0,2 % y < 15 %), muestras seguidas y esperas mínimas (5 s para bajar, 30 s para subir), suelo del 30 % del objetivo, nunca por encima del objetivo, congelado durante reconexiones. Se puede desactivar o restaurar el bitrate configurado | 11 pruebas con series de red simuladas (picos, ruido intermedio, saturación sostenida, recuperación) |
+| Sobrecargas | Retraso de render o descartes del codificador sostenidos generan un aviso con recomendaciones (como mucho uno cada 5 min); no se corrigen solos porque las soluciones cortan la salida | Pruebas unitarias |
+| Auditoría | Panel «Rendimiento» (barra lateral o Herramientas): equipo, benchmark, recomendaciones, estado en directo y registro de cada decisión con su motivo y botón «Revertir» | App real |
+| Asistente | Herramienta `get_performance_report` (solo lectura): explica el rendimiento; las decisiones las toma el controlador o el usuario | Prueba del catálogo |
+| Adaptador por equipo | `%APPDATA%\StreamPilot\machine.json`; si libobs no arranca con el adaptador elegido, se vuelve solo al 0 para el siguiente inicio | Prueba unitaria (archivo dañado) + reinicio real |
+
 ## Limitaciones conocidas (reales, no simuladas)
 
 - **Paneles acoplables**: son redimensionables y se pueden restaurar, pero no se pueden arrastrar a otra posición ni
@@ -104,14 +118,18 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 - **Animaciones**: las salidas automáticas y la cuenta atrás se comprueban cada 200 ms en .NET; la animación en sí corre
   en el reloj del motor.
 - **Lienzo y proyecto**: cambiarlos reinicia la aplicación, porque libobs no se puede reiniciar dentro del proceso.
-- **GPU de render**: libobs usa el adaptador 0 (Intel UHD en este portátil); NVENC en modo textura hace fallback. La
-  selección automática de adaptador/encoder es de la Fase 5.
+- **GPU de render**: por defecto se usa el adaptador 0 (Intel UHD en este portátil). El panel de rendimiento recomienda
+  la RTX y la cambia con un reinicio si el usuario lo autoriza; no se cambia sola.
+- **Bitrate adaptativo** verificado con series simuladas y con un cambio real de bitrate contra un servidor local;
+  no se ha probado con pérdidas de red reales (no hay forma de saturar la red de forma controlada en este equipo).
+- **Benchmark**: mide con la escena de programa actual; con una escena ligera todos los codificadores salen sanos.
+  No mide la subida de red (no hay prueba de ancho de banda) y solo prueba H.264.
 - **Transmisión** no probada contra YouTube/Twitch/etc. por falta de credenciales; la ruta RTMP es la estándar de libobs.
 - **Licencia**: libobs es GPLv2+. Hay que decidir el modelo de distribución con asesoría legal antes de vender.
 
 ## Pendiente
 
-- **Fases 5–7** — Optimización, multistream, calidad y distribución.
+- **Fases 6–7** — Multistream, calidad y distribución.
 
 ## Cómo ejecutar y verificar
 

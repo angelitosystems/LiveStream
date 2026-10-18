@@ -35,7 +35,7 @@
 extern "C" {
 #endif
 
-#define SP_ABI_VERSION 4u
+#define SP_ABI_VERSION 5u
 
 typedef enum sp_result {
     SP_OK = 0,
@@ -140,6 +140,11 @@ typedef struct sp_metrics {
     uint32_t stream_total_frames;
     uint64_t stream_total_bytes;
     uint64_t recording_total_bytes;
+    /* v5 */
+    float stream_congestion;              /* 0..1, presión de la conexión de salida (obs_output_get_congestion) */
+    uint32_t stream_video_bitrate_kbps;   /* bitrate de video configurado ahora en la emisión (0 si no emite) */
+    int32_t stream_dynamic_bitrate;       /* 1 si el encoder de la emisión admite cambiar el bitrate en directo */
+    uint32_t render_adapter_index;        /* adaptador gráfico con el que se inició libobs */
 } sp_metrics;
 
 typedef struct sp_audio_levels {
@@ -251,6 +256,17 @@ SP_API sp_result SP_CALL sp_recording_start(sp_engine *engine, const sp_recordin
 SP_API sp_result SP_CALL sp_recording_stop(sp_engine *engine);
 SP_API sp_result SP_CALL sp_stream_start(sp_engine *engine, const sp_stream_config *config);
 SP_API sp_result SP_CALL sp_stream_stop(sp_engine *engine);
+/* Cambia el bitrate de video de la emisión en curso sin cortarla. Solo si el encoder declara
+ * OBS_ENCODER_CAP_DYN_BITRATE; si no, SP_ERR_INVALID_STATE. */
+SP_API sp_result SP_CALL sp_stream_set_video_bitrate(sp_engine *engine, uint32_t kbps);
+/* 1 si el tipo de encoder admite cambio de bitrate en directo. */
+SP_API sp_result SP_CALL sp_video_encoder_dynamic_bitrate(sp_engine *engine, const char *encoder_id, int32_t *supported);
+
+/* Adaptadores gráficos (DXGI) en el orden que usa libobs para sp_engine_config.adapter_index.
+ * Se puede llamar sin motor. vendor_id: 0x10DE NVIDIA, 0x8086 Intel, 0x1002 AMD. */
+typedef void(SP_CALL *sp_adapter_callback)(uint32_t index, const char *name, uint32_t vendor_id,
+                                           uint64_t dedicated_video_memory, int32_t is_software, void *user_data);
+SP_API sp_result SP_CALL sp_adapters_enumerate(sp_adapter_callback callback, void *user_data);
 /* Código y mensaje de la última detención de una salida (0 = detención normal). */
 SP_API sp_result SP_CALL sp_output_last_stop(sp_engine *engine, sp_output_kind kind, int32_t *code, char *buffer,
                                              int32_t buffer_size, int32_t *required);

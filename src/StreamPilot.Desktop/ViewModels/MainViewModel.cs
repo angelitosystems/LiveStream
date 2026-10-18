@@ -8,6 +8,7 @@ using StreamPilot.Application.Assistant;
 using StreamPilot.Application.Audio;
 using StreamPilot.Application.Commands;
 using StreamPilot.Application.Graphics;
+using StreamPilot.Application.Optimization;
 using StreamPilot.Application.Scenes;
 using StreamPilot.Application.Sources;
 using StreamPilot.Application.Studio;
@@ -41,6 +42,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         Session = session;
         Engine = engine;
         Dialogs = dialogs;
+        Machine = new MachineSettingsStore();
+        Optimizer = new PerformanceOptimizer(session) { AdaptiveEnabled = Machine.Load().AdaptiveBitrate };
         Assistant = new AssistantViewModel(this, secrets);
         Executor.StateChanged += (_, _) => Dispatcher.UIThread.Post(Refresh);
         Session.AutosaveFailed += (_, ex) => Dispatcher.UIThread.Post(() => StatusMessage = $"No se pudo guardar: {ex.Message}");
@@ -59,6 +62,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
 
     /// <summary>Panel del asistente de IA.</summary>
     public AssistantViewModel Assistant { get; }
+
+    /// <summary>Optimizador en directo (bitrate adaptativo, avisos de sobrecarga, auditoría).</summary>
+    public PerformanceOptimizer Optimizer { get; }
+
+    /// <summary>Ajustes de este equipo (adaptador gráfico, bitrate adaptativo).</summary>
+    public MachineSettingsStore Machine { get; }
     public CommandExecutor Executor => Session.Executor;
     public StudioProject Project => Session.Project;
 
@@ -128,7 +137,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         try
         {
             StatusMessage = "Iniciando motor…";
-            await Session.StartEngineAsync();
+            var machine = Machine.Load();
+            var adapters = LibObsEngine.ListAdapters();
+            var adapter = adapters.Any(a => a.Index == machine.RenderAdapterIndex) ? machine.RenderAdapterIndex : 0;
+            try
+            {
+                await Session.StartEngineAsync(adapter);
+            }
+            catch when (adapter != 0)
+            {
+                // libobs no se puede reiniciar en el mismo proceso: se vuelve al adaptador 0 para el próximo arranque.
+                Machine.Save(machine with { RenderAdapterIndex = 0 });
+                throw new InvalidOperationException(
+                    $"El motor no pudo iniciar con el adaptador {adapter}. Se volvió al adaptador principal: reinicia StreamPilot.");
+            }
             EngineReady = true;
             StatusMessage = "Motor listo.";
             _metricsTimer.Start();
@@ -829,6 +851,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         try
         {
             var m = await Engine.GetMetricsAsync(CancellationToken.None);
+            await Optimizer.TickAsync(m, DateTime.UtcNow);
             FpsText = $"{m.ActiveFps:0.00} FPS";
             CpuText = $"CPU {m.CpuUsagePercent:0.0}%";
             MemoryText = $"{m.MemoryBytes / 1048576} MB";

@@ -16,7 +16,7 @@ public sealed class NativeInteropTests
         Assert.Equal(16 + 24, Marshal.SizeOf<SpStreamConfig>());
         Assert.Equal(5 * 4 + 4 * 4, Marshal.SizeOf<SpTransform>());
         Assert.Equal(5 * 4, Marshal.SizeOf<SpAudioLevels>());
-        Assert.Equal(88, Marshal.SizeOf<SpMetrics>());
+        Assert.Equal(104, Marshal.SizeOf<SpMetrics>());
     }
 
     [Fact]

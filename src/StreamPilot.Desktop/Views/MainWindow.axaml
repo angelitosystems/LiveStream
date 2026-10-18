@@ -81,6 +81,7 @@
             <MenuItem Header="Propiedades de la fuente…" Click="OnProperties" />
             <MenuItem Header="Filtros de la fuente…" Click="OnSourceFilters" />
             <MenuItem Header="Ajustes de la transición…" Click="OnTransitionSettings" />
+            <MenuItem Header="Rendimiento y optimización…" Click="OnPerformance" />
             <MenuItem Header="Abrir carpeta de grabaciones" Click="OnOpenRecordings" />
             <MenuItem Header="Abrir carpeta de proyectos" Click="OnOpenProjects" />
             <MenuItem Header="Abrir registros de diagnóstico" Click="OnOpenLogs" />
@@ -125,6 +126,12 @@
             <TextBlock Text="Asistente" FontSize="9" HorizontalAlignment="Center" />
           </StackPanel>
         </ToggleButton>
+        <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Rendimiento y optimización" ToolTip.Tip="Rendimiento y optimización" Click="OnPerformance">
+          <StackPanel Spacing="2">
+            <PathIcon Data="{StaticResource Icon.Gauge}" Width="18" Height="18" />
+            <TextBlock Text="Rendim." FontSize="9" HorizontalAlignment="Center" />
+          </StackPanel>
+        </Button>
         <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Ajustes de salida y video" ToolTip.Tip="Ajustes de salida y video" Click="OnSettings">
           <StackPanel Spacing="2">
             <PathIcon Data="{StaticResource Icon.Gear}" Width="18" Height="18" />

@@ -78,6 +78,9 @@ public interface IStreamingEngine : IAsyncDisposable
     Task StopRecordingAsync(CancellationToken ct);
     Task StartStreamAsync(StreamTarget target, CancellationToken ct);
     Task StopStreamAsync(CancellationToken ct);
+    /// <summary>Cambia el bitrate de video de la emisión en curso sin cortarla (si el encoder lo admite).</summary>
+    Task SetStreamVideoBitrateAsync(int kbps, CancellationToken ct);
+    Task<bool> SupportsDynamicBitrateAsync(string encoderId, CancellationToken ct);
     Task<OutputStopInfo> GetLastStopAsync(OutputKind kind, CancellationToken ct);
 }
 
@@ -157,7 +160,19 @@ public sealed record EngineMetrics(
     uint StreamDroppedFrames = 0,
     uint StreamTotalFrames = 0,
     ulong StreamTotalBytes = 0,
-    ulong RecordingTotalBytes = 0);
+    ulong RecordingTotalBytes = 0,
+    /// <summary>0..1: presión de la conexión de emisión.</summary>
+    double StreamCongestion = 0,
+    int StreamVideoBitrateKbps = 0,
+    bool StreamDynamicBitrate = false,
+    int RenderAdapterIndex = 0);
+
+/// <summary>Adaptador gráfico (DXGI). Index es el que usa libobs para renderizar.</summary>
+public sealed record GraphicsAdapter(int Index, string Name, uint VendorId, ulong DedicatedMemoryBytes, bool IsSoftware)
+{
+    public string Vendor => VendorId switch { 0x10DE => "NVIDIA", 0x8086 => "Intel", 0x1002 => "AMD", 0x1414 => "Microsoft", _ => $"0x{VendorId:X4}" };
+    public bool IsDiscrete => !IsSoftware && DedicatedMemoryBytes >= 1L << 30 && VendorId is 0x10DE or 0x1002;
+}
 
 /// <summary>Propiedad editable de una fuente, descrita por el motor.</summary>
 public sealed record SourceProperty(

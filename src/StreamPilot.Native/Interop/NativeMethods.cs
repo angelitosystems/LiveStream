@@ -8,7 +8,7 @@ namespace StreamPilot.Native.Interop;
 internal static unsafe partial class NativeMethods
 {
     public const string Library = "streampilot_bridge";
-    public const uint ExpectedAbiVersion = 4;
+    public const uint ExpectedAbiVersion = 5;
 
     // ---- General
     [LibraryImport(Library, EntryPoint = "sp_abi_version"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -153,6 +153,15 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(Library, EntryPoint = "sp_stream_start"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial SpResult StreamStart(EngineSafeHandle engine, in SpStreamConfig config);
+
+    [LibraryImport(Library, EntryPoint = "sp_stream_set_video_bitrate"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult StreamSetVideoBitrate(EngineSafeHandle engine, uint kbps);
+
+    [LibraryImport(Library, EntryPoint = "sp_video_encoder_dynamic_bitrate", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult VideoEncoderDynamicBitrate(EngineSafeHandle engine, string encoderId, out int supported);
+
+    [LibraryImport(Library, EntryPoint = "sp_adapters_enumerate"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult AdaptersEnumerate(delegate* unmanaged[Cdecl]<uint, byte*, uint, ulong, int, nint, void> callback, nint userData);
 
     [LibraryImport(Library, EntryPoint = "sp_stream_stop"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial SpResult StreamStop(EngineSafeHandle engine);

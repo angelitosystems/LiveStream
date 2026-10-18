@@ -101,6 +101,10 @@ internal struct SpMetrics
     public uint StreamTotalFrames;
     public ulong StreamTotalBytes;
     public ulong RecordingTotalBytes;
+    public float StreamCongestion;
+    public uint StreamVideoBitrateKbps;
+    public int StreamDynamicBitrate;
+    public uint RenderAdapterIndex;
 }
 
 [StructLayout(LayoutKind.Sequential)]
