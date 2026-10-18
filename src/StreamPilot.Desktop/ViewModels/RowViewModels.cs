@@ -44,9 +44,24 @@ public sealed partial class MixerChannelViewModel(Guid sourceId) : ObservableObj
     /// <summary>Evita reenviar al motor un valor que acaba de llegar del dominio.</summary>
     internal bool Syncing { get; set; }
 
+    internal Action<MixerChannelViewModel, double>? VolumeRequested { get; set; }
+    internal Action<MixerChannelViewModel, AudioMonitoring>? MonitoringRequested { get; set; }
+
     public string VolumeText => VolumeDb <= MinDb ? "-inf dB" : $"{VolumeDb:0.0} dB";
 
-    partial void OnVolumeDbChanged(double value) => OnPropertyChanged(nameof(VolumeText));
+    public bool IsMonitored => Monitoring != AudioMonitoring.None;
+
+    partial void OnVolumeDbChanged(double value)
+    {
+        OnPropertyChanged(nameof(VolumeText));
+        if (!Syncing)
+            VolumeRequested?.Invoke(this, value);
+    }
+
+    partial void OnMonitoringChanged(AudioMonitoring value) => OnPropertyChanged(nameof(IsMonitored));
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void SetMonitoring(AudioMonitoring monitoring) => MonitoringRequested?.Invoke(this, monitoring);
 
     public static double ToDb(double multiplier) => Math.Max(MinDb, SetVolumeCommand.MultiplierToDb(multiplier));
 

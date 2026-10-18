@@ -209,9 +209,11 @@ public sealed class RenameSourceCommand(Guid sourceId, string newName) : IRevers
     }
 }
 
-public sealed class UpdateSourceSettingsCommand(Guid sourceId, string settingsJson) : IReversibleStudioCommand
+public sealed class UpdateSourceSettingsCommand(Guid sourceId, string settingsJson, string? previousSettingsJson = null) : IReversibleStudioCommand
 {
-    private string? _previous;
+    // libobs fusiona los ajustes en lugar de reemplazarlos: para deshacer de verdad hace falta el estado completo
+    // anterior (con valores por defecto), que el diálogo de propiedades lee del motor al abrirse.
+    private string? _previous = previousSettingsJson;
 
     public string Description => "Cambiar propiedades de la fuente";
 
@@ -233,7 +235,7 @@ public sealed class UpdateSourceSettingsCommand(Guid sourceId, string settingsJs
     public async Task ExecuteAsync(StudioContext context, CancellationToken ct)
     {
         var source = context.Project.GetSource(sourceId);
-        _previous = source.SettingsJson;
+        _previous ??= source.SettingsJson;
         source.SettingsJson = settingsJson;
         if (context.Engine.IsInitialized)
             await context.Engine.UpdateSourceSettingsAsync(sourceId, settingsJson, ct).ConfigureAwait(false);

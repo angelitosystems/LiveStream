@@ -231,7 +231,7 @@ public sealed class SetTransitionCommand(TransitionSettings transition) : IStudi
 
     public string? Validate(StudioContext context)
     {
-        if (!Available.ContainsKey(transition.TypeId))
+        if (string.IsNullOrEmpty(transition.TypeId) || !Available.ContainsKey(transition.TypeId))
             return $"Transición desconocida: {transition.TypeId}.";
         if (transition.DurationMs is < 0 or > 20_000)
             return "La duración debe estar entre 0 y 20000 ms.";

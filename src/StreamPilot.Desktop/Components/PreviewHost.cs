@@ -32,7 +32,7 @@ public sealed class PreviewHost : NativeControlHost
     public event Action<CanvasPointer>? CanvasWheel;
 
     /// <summary>Cursor que muestra la ventana nativa (lo decide el editor según lo que hay bajo el ratón).</summary>
-    public CanvasCursor Cursor { get; set; } = CanvasCursor.Arrow;
+    public CanvasCursor NativeCursor { get; set; } = CanvasCursor.Arrow;
 
     public nint NativeHandle => _hwnd;
 
@@ -130,7 +130,7 @@ public sealed class PreviewHost : NativeControlHost
                 result = 1; // libobs pinta todo el área: evita parpadeo
                 return true;
             case Win32.WM_SETCURSOR:
-                Win32.SetCursor(Win32.LoadCursor(0, Cursor switch
+                Win32.SetCursor(Win32.LoadCursor(0, NativeCursor switch
                 {
                     CanvasCursor.Move => 32646,
                     CanvasCursor.SizeNwse => 32642,

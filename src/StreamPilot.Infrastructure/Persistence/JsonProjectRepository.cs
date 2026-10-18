@@ -82,9 +82,15 @@ public sealed class JsonProjectRepository : IProjectRepository
         await _writeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
-            await using (var writer = new StreamWriter(stream))
-                await writer.WriteAsync(json.AsMemory(), ct).ConfigureAwait(false);
+            // ConfigureAwait también en la liberación: si no, la continuación vuelve al hilo de UI y un guardado
+            // esperado de forma síncrona al cerrar la app se queda bloqueado.
+            var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
+            await using (stream.ConfigureAwait(false))
+            {
+                var writer = new StreamWriter(stream);
+                await using (writer.ConfigureAwait(false))
+                    await writer.WriteAsync(json.AsMemory(), ct).ConfigureAwait(false);
+            }
 
             if (File.Exists(full))
                 File.Replace(temp, full, full + ".bak", ignoreMetadataErrors: true);

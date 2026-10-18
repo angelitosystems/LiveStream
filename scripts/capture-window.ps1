@@ -1,30 +1,50 @@
 <#
 .SYNOPSIS
-  Captura la ventana principal de un proceso a PNG (verificación visual sin interacción).
+  Captura a PNG una ventana de un proceso (verificación visual sin interacción).
+.PARAMETER WindowTitle
+  Título exacto de otra ventana del mismo proceso (p. ej. un diálogo). Por defecto, la ventana principal.
 #>
 param(
     [Parameter(Mandatory)] [int] $ProcessId,
-    [Parameter(Mandatory)] [string] $OutputPath
+    [Parameter(Mandatory)] [string] $OutputPath,
+    [string] $WindowTitle
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type @'
 using System;
+using System.Text;
 using System.Runtime.InteropServices;
-public static class SpWin32 {
+public static class SpCapture {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    delegate bool EnumProc(IntPtr hwnd, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr lParam);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, StringBuilder sb, int max);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    public static IntPtr Find(uint pid, string title) {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((h, l) => {
+            uint p; GetWindowThreadProcessId(h, out p);
+            if (p != pid || !IsWindowVisible(h)) return true;
+            var sb = new StringBuilder(512); GetWindowText(h, sb, 512);
+            if (sb.ToString() == title) { found = h; return false; }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
 }
 '@
-[SpWin32]::SetProcessDPIAware() | Out-Null
-$proc = Get-Process -Id $ProcessId
-if ($proc.MainWindowHandle -eq 0) { throw 'El proceso no tiene ventana principal.' }
-[SpWin32]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+[SpCapture]::SetProcessDPIAware() | Out-Null
+$handle = if ($WindowTitle) { [SpCapture]::Find([uint32]$ProcessId, $WindowTitle) } else { (Get-Process -Id $ProcessId).MainWindowHandle }
+if ($handle -eq [IntPtr]::Zero) { throw "No se encontró la ventana '$WindowTitle' del proceso $ProcessId." }
+[SpCapture]::SetForegroundWindow($handle) | Out-Null
 Start-Sleep -Milliseconds 400
-$r = New-Object SpWin32+RECT
-[SpWin32]::GetWindowRect($proc.MainWindowHandle, [ref] $r) | Out-Null
+$r = New-Object SpCapture+RECT
+[SpCapture]::GetWindowRect($handle, [ref] $r) | Out-Null
 $w = $r.Right - $r.Left; $h = $r.Bottom - $r.Top
 $bmp = New-Object System.Drawing.Bitmap $w, $h
 $g = [System.Drawing.Graphics]::FromImage($bmp)

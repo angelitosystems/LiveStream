@@ -120,6 +120,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         catch (Exception ex)
         {
             EngineError = $"No se pudo iniciar el motor: {ex.Message}";
+            Infrastructure.Diagnostics.AppLog.Error("motor", "Fallo al iniciar", ex);
         }
     }
 
@@ -194,7 +195,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             .Concat((program?.Items ?? []).Select(i => Project.GetSource(i.SourceId)).Where(HasAudio).Select(s => s.Id))
             .Concat((editScene?.Items ?? []).Select(i => Project.GetSource(i.SourceId)).Where(HasAudio).Select(s => s.Id))
             .Distinct().ToList();
-        Sync(Mixer, ids, id => new MixerChannelViewModel(id), c => c.SourceId);
+        Sync(Mixer, ids, id => new MixerChannelViewModel(id)
+        {
+            VolumeRequested = (c, db) => _ = SetChannelVolume(c, db),
+            MonitoringRequested = (c, m) => _ = Run(new SetMonitoringCommand(c.SourceId, m)),
+        }, c => c.SourceId);
         foreach (var channel in Mixer)
         {
             var source = Project.GetSource(channel.SourceId);
@@ -265,7 +270,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         var result = await Executor.ExecuteAsync(command);
         if (!result.Success)
+        {
             StatusMessage = result.Error;
+            Infrastructure.Diagnostics.AppLog.Warn("comando", $"{command.Description}: {result.Error}");
+        }
         return result;
     }
 
@@ -453,7 +461,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private Task TransitionToProgram() => Run(new TransitionToProgramCommand());
 
-    partial void OnTransitionIdChanged(string value) => ApplyTransition();
+    partial void OnTransitionIdChanged(string value)
+    {
+        // El ComboBox escribe null mientras se inicializa su lista: se ignora y se restaura el valor del proyecto.
+        if (string.IsNullOrEmpty(value))
+        {
+            Dispatcher.UIThread.Post(() => TransitionId = Project.Transition.TypeId);
+            return;
+        }
+        ApplyTransition();
+    }
 
     partial void OnTransitionDurationMsChanged(int value) => ApplyTransition();
 
@@ -473,12 +490,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     [RelayCommand]
     private Task ToggleMute(MixerChannelViewModel channel) => Run(new SetMutedCommand(channel.SourceId, !channel.Muted));
-
-    [RelayCommand]
-    private Task SetMonitoring(object? parameter) =>
-        parameter is object[] { Length: 2 } args && args[0] is MixerChannelViewModel channel && args[1] is AudioMonitoring m
-            ? Run(new SetMonitoringCommand(channel.SourceId, m))
-            : Task.CompletedTask;
 
     private async Task PollMetersAsync()
     {

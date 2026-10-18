@@ -273,7 +273,10 @@ struct display_state {
         }
         for (auto *item : items)
             obs_sceneitem_release(item);
-        obs_source_release(scene);
+        if (scene) {
+            obs_source_dec_showing(scene);
+            obs_source_release(scene);
+        }
     }
 };
 
@@ -1493,6 +1496,9 @@ sp_result SP_CALL sp_display_set_source(sp_engine *engine, const char *display_i
             if (!scene)
                 return fail(SP_ERR_NOT_FOUND, "Escena no encontrada.");
             scene_source = obs_source_get_ref(obs_scene_get_source(scene));
+            // Una escena que se ve en un display está "mostrándose": sin esto libobs no activa sus fuentes
+            // (p. ej. la captura de pantalla no se inicializa) cuando la escena no está en programa.
+            obs_source_inc_showing(scene_source);
         }
         obs_source_t *old = nullptr;
         {
@@ -1501,7 +1507,10 @@ sp_result SP_CALL sp_display_set_source(sp_engine *engine, const char *display_i
             it->second->scene_source = scene_source;
             it->second->mode = mode;
         }
-        obs_source_release(old);
+        if (old) {
+            obs_source_dec_showing(old);
+            obs_source_release(old);
+        }
         return SP_OK;
     });
 }
