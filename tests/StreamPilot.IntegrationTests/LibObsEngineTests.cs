@@ -45,9 +45,12 @@ public sealed class LibObsEngineTests(ITestOutputHelper output)
                 await SourcesItemsAndPropertiesAsync(engine);
                 await AudioMetersAsync(engine);
                 await RecordingAsync(engine);
+                var production = new ProductionFeatures(engine, output);
+                await production.RunAsync();
                 await StreamFailureIsReportedAsync(engine);
                 await engine.ShutdownAsync(None);
                 Assert.False(engine.IsInitialized);
+                production.FilesToDelete.ForEach(File.Delete);
             }
 
             await using var second = new LibObsEngine();

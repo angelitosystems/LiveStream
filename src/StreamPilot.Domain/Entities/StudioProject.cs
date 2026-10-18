@@ -1,12 +1,15 @@
+using StreamPilot.Domain.Graphics;
+
 namespace StreamPilot.Domain.Entities;
 
 /// <summary>Raíz del proyecto de estudio. Es la unidad que se persiste y versiona.</summary>
 public sealed class StudioProject
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     private readonly List<Scene> _scenes = [];
     private readonly List<Source> _sources = [];
+    private readonly List<Graphic> _graphics = [];
 
     public StudioProject(Guid id, string name, int schemaVersion = CurrentSchemaVersion)
     {
@@ -35,6 +38,46 @@ public sealed class StudioProject
 
     public IReadOnlyList<Scene> Scenes => _scenes;
     public IReadOnlyList<Source> Sources => _sources;
+
+    /// <summary>Gráficos de la capa superpuesta, de abajo (índice 0) hacia arriba.</summary>
+    public IReadOnlyList<Graphic> Graphics => _graphics;
+
+    public Graphic GetGraphic(Guid graphicId) =>
+        _graphics.FirstOrDefault(g => g.Id == graphicId) ?? throw new KeyNotFoundException($"Gráfico {graphicId} no encontrado.");
+
+    public Graphic? FindGraphic(Guid graphicId) => _graphics.FirstOrDefault(g => g.Id == graphicId);
+
+    public int IndexOfGraphic(Guid graphicId) => _graphics.FindIndex(g => g.Id == graphicId);
+
+    public void InsertGraphic(Graphic graphic, int? index = null)
+    {
+        if (_graphics.Any(g => g.Id == graphic.Id))
+            throw new InvalidOperationException("El gráfico ya existe.");
+        _graphics.Insert(Math.Clamp(index ?? _graphics.Count, 0, _graphics.Count), graphic);
+    }
+
+    /// <summary>Sustituye un gráfico por su versión editada (mismo Id y tipo).</summary>
+    public Graphic ReplaceGraphic(Graphic graphic)
+    {
+        var index = IndexOfGraphic(graphic.Id);
+        if (index < 0)
+            throw new KeyNotFoundException($"Gráfico {graphic.Id} no encontrado.");
+        var previous = _graphics[index];
+        if (previous.Kind != graphic.Kind)
+            throw new InvalidOperationException("No se puede cambiar el tipo de un gráfico.");
+        _graphics[index] = graphic;
+        return previous;
+    }
+
+    public Graphic RemoveGraphic(Guid graphicId)
+    {
+        var graphic = GetGraphic(graphicId);
+        _graphics.Remove(graphic);
+        return graphic;
+    }
+
+    public bool HasGraphicNamed(string name, Guid? except = null) =>
+        _graphics.Any(g => g.Id != except && string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase));
 
     public void Rename(string name)
     {

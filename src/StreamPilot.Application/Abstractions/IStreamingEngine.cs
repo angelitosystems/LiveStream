@@ -1,3 +1,4 @@
+using StreamPilot.Domain.Animation;
 using StreamPilot.Domain.Entities;
 using StreamPilot.Domain.ValueObjects;
 
@@ -31,10 +32,14 @@ public interface IStreamingEngine : IAsyncDisposable
     Task RemoveSourceAsync(Guid sourceId, CancellationToken ct);
     Task RenameSourceAsync(Guid sourceId, string name, CancellationToken ct);
     Task UpdateSourceSettingsAsync(Guid sourceId, string settingsJson, CancellationToken ct);
-    /// <summary>Ajustes actuales incluidos los valores por defecto del tipo (objeto JSON).</summary>
+    /// <summary>Ajustes actuales incluidos los valores por defecto del tipo (objeto JSON). Admite ids de filtro.</summary>
     Task<string> GetSourceSettingsAsync(Guid sourceId, CancellationToken ct);
     Task<IReadOnlyList<SourceProperty>> GetSourcePropertiesAsync(Guid sourceId, CancellationToken ct);
     Task<(int Width, int Height)> GetSourceSizeAsync(Guid sourceId, CancellationToken ct);
+    /// <summary>
+    /// Asigna una fuente (o escena) a un canal de salida global: los canales 1..5 son el audio global y los
+    /// superiores se componen en video por encima del programa (capa de gráficos). 0 la retira.
+    /// </summary>
     Task SetGlobalAudioChannelAsync(Guid sourceId, int channel, CancellationToken ct);
 
     // Audio
@@ -45,10 +50,25 @@ public interface IStreamingEngine : IAsyncDisposable
     /// <summary>Niveles más recientes, o null si la fuente no tiene audio.</summary>
     Task<AudioLevels?> GetAudioLevelsAsync(Guid sourceId, CancellationToken ct);
 
-    // Elementos de escena
+    // Filtros (de fuentes o de escenas)
+    Task<IReadOnlyList<EngineTypeInfo>> ListFilterTypesAsync(CancellationToken ct);
+    Task<IReadOnlyList<EngineTypeInfo>> ListTransitionTypesAsync(CancellationToken ct);
+    Task AddFilterAsync(Guid sourceId, Guid filterId, string typeId, string name, string settingsJson, CancellationToken ct);
+    Task RemoveFilterAsync(Guid filterId, CancellationToken ct);
+    Task UpdateFilterAsync(Guid filterId, string settingsJson, CancellationToken ct);
+    Task SetFilterEnabledAsync(Guid filterId, bool enabled, CancellationToken ct);
+
+    // Animación por fotogramas clave, en el reloj del motor
+    Task PlayAnimationAsync(Guid itemId, AnimationClip clip, AnimationFlags flags, CancellationToken ct);
+    Task StopAnimationAsync(Guid itemId, CancellationToken ct);
+    Task<bool> IsAnimationPlayingAsync(Guid itemId, CancellationToken ct);
+
+    // Elementos de escena. sourceId puede ser otra escena (escena anidada).
     Task AddItemAsync(Guid sceneId, Guid itemId, Guid sourceId, CancellationToken ct);
     Task RemoveItemAsync(Guid itemId, CancellationToken ct);
     Task SetItemTransformAsync(Guid itemId, Transform transform, CancellationToken ct);
+    /// <summary>Transformación actual en el motor (incluye el efecto de una animación en curso).</summary>
+    Task<Transform> GetItemTransformAsync(Guid itemId, CancellationToken ct);
     Task SetItemVisibleAsync(Guid itemId, bool visible, CancellationToken ct);
     Task SetItemLockedAsync(Guid itemId, bool locked, CancellationToken ct);
     Task SetItemOrderAsync(Guid itemId, int index, CancellationToken ct);
@@ -109,6 +129,9 @@ public sealed record StreamTarget(string Server, string Key, EncoderSettings Enc
 }
 
 public sealed record VideoEncoderInfo(string Id, string Name, string Codec);
+
+/// <summary>Tipo de filtro o transición disponible en el runtime del motor.</summary>
+public sealed record EngineTypeInfo(string Id, string Name, bool HasVideo, bool HasAudio);
 
 public enum OutputKind { Recording = 0, Stream = 1 }
 

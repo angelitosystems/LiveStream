@@ -1,5 +1,8 @@
 using StreamPilot.Application.Abstractions;
+using StreamPilot.Application.Filters;
+using StreamPilot.Application.Graphics;
 using StreamPilot.Domain.Entities;
+using StreamPilot.Domain.Graphics;
 
 namespace StreamPilot.Application.Studio;
 
@@ -10,6 +13,8 @@ public static class EngineSync
     {
         await engine.CreateSourceAsync(SourceDefinition.From(source), ct).ConfigureAwait(false);
         await ApplyAudioAsync(engine, source, ct).ConfigureAwait(false);
+        foreach (var filter in source.Filters)
+            await FilterSync.CreateAsync(engine, source.Id, filter, ct).ConfigureAwait(false);
     }
 
     public static async Task ApplyAudioAsync(IStreamingEngine engine, Source source, CancellationToken ct)
@@ -46,12 +51,16 @@ public static class EngineSync
     }
 
     /// <summary>Carga un proyecto completo en un motor recién inicializado.</summary>
-    public static async Task LoadProjectAsync(IStreamingEngine engine, StudioProject project, CancellationToken ct)
+    public static async Task LoadProjectAsync(IStreamingEngine engine, StudioProject project, CancellationToken ct,
+        Func<Graphic, string, string?>? graphicText = null)
     {
         foreach (var source in project.Sources)
             await CreateSourceAsync(engine, source, ct).ConfigureAwait(false);
         foreach (var scene in project.Scenes)
             await CreateSceneAsync(engine, scene, ct).ConfigureAwait(false);
+        await GraphicLayer.CreateOverlayAsync(engine, project, ct).ConfigureAwait(false);
+        for (var i = 0; i < project.Graphics.Count; i++)
+            await GraphicLayer.CreateAsync(engine, project, project.Graphics[i], i, graphicText, ct).ConfigureAwait(false);
         await engine.SetTransitionAsync(project.Transition, ct).ConfigureAwait(false);
         if (project.ActiveSceneId is { } active)
             await engine.SetProgramSceneAsync(active, ct).ConfigureAwait(false);

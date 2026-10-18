@@ -18,7 +18,7 @@ namespace StreamPilot.Desktop.Views.Dialogs;
 /// <summary>Diálogos del estudio. Todas las modificaciones salen como comandos del <c>CommandExecutor</c>.</summary>
 public static class StudioDialogs
 {
-    private static Window NewWindow(string title, double width, double height) => new()
+    internal static Window NewWindow(string title, double width, double height) => new()
     {
         Title = title,
         Width = width,
@@ -29,7 +29,7 @@ public static class StudioDialogs
         WindowStartupLocation = WindowStartupLocation.CenterOwner,
     };
 
-    private static Grid Layout(Control body, params Button[] buttons)
+    internal static Grid Layout(Control body, params Button[] buttons)
     {
         var footer = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(16, 10) };
         foreach (var b in buttons)
@@ -45,7 +45,7 @@ public static class StudioDialogs
         return grid;
     }
 
-    private static Button Primary(string text)
+    internal static Button Primary(string text)
     {
         var b = new Button { Content = text, IsDefault = true };
         b.Classes.Add("primary");
@@ -277,7 +277,7 @@ public static class StudioDialogs
         }
     }
 
-    private static Control WithColumn(Control c, int column)
+    internal static Control WithColumn(Control c, int column)
     {
         Grid.SetColumn(c, column);
         return c;

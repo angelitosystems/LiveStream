@@ -94,7 +94,10 @@ public sealed class DuplicateSceneCommand(Guid sceneId) : IReversibleStudioComma
         var original = context.Project.GetScene(sceneId);
         if (_copy is null)
         {
-            _copy = new Scene(Guid.NewGuid(), context.Project.NextSceneName(original.Name));
+            _copy = new Scene(Guid.NewGuid(), context.Project.NextSceneName(original.Name))
+            {
+                TransitionOverride = original.TransitionOverride,
+            };
             foreach (var item in original.Items)
             {
                 var clone = _copy.AddItem(item.SourceId, item.Transform);
@@ -152,8 +155,7 @@ public sealed class ActivateSceneCommand(Guid sceneId) : IStudioCommand
     public async Task ExecuteAsync(StudioContext context, CancellationToken ct)
     {
         context.Project.ActivateScene(sceneId);
-        if (context.Engine.IsInitialized)
-            await context.Engine.SetProgramSceneAsync(sceneId, ct).ConfigureAwait(false);
+        await ProgramSwitch.SwitchAsync(context, sceneId, ct).ConfigureAwait(false);
     }
 }
 
@@ -210,38 +212,54 @@ public sealed class TransitionToProgramCommand : IStudioCommand
         // Como en OBS: la escena que sale de programa pasa a la vista previa.
         if (previousProgram is { } old)
             context.Project.SetPreviewScene(old);
-        if (context.Engine.IsInitialized)
-            await context.Engine.SetProgramSceneAsync(preview, ct).ConfigureAwait(false);
+        await ProgramSwitch.SwitchAsync(context, preview, ct).ConfigureAwait(false);
     }
 }
 
+/// <summary>Cambia la transición general del proyecto.</summary>
 public sealed class SetTransitionCommand(TransitionSettings transition) : IStudioCommand
 {
-    public static readonly IReadOnlyDictionary<string, string> Available = new Dictionary<string, string>
-    {
-        ["cut_transition"] = "Corte",
-        ["fade_transition"] = "Fundido",
-        ["swipe_transition"] = "Barrido",
-        ["slide_transition"] = "Deslizamiento",
-        ["fade_to_color_transition"] = "Fundido a color",
-        ["wipe_transition"] = "Cortinilla (luma)",
-    };
+    public static IReadOnlyDictionary<string, string> Available => TransitionCatalog.Names;
 
     public string Description => $"Transición: {transition.TypeId} {transition.DurationMs} ms";
 
-    public string? Validate(StudioContext context)
-    {
-        if (string.IsNullOrEmpty(transition.TypeId) || !Available.ContainsKey(transition.TypeId))
-            return $"Transición desconocida: {transition.TypeId}.";
-        if (transition.DurationMs is < 0 or > 20_000)
-            return "La duración debe estar entre 0 y 20000 ms.";
-        return null;
-    }
+    public string? Validate(StudioContext context) => TransitionCatalog.Validate(transition);
 
     public async Task ExecuteAsync(StudioContext context, CancellationToken ct)
     {
         context.Project.Transition = transition;
-        if (context.Engine.IsInitialized)
-            await context.Engine.SetTransitionAsync(transition, ct).ConfigureAwait(false);
+        if (!context.Engine.IsInitialized)
+            return;
+        await context.Engine.SetTransitionAsync(transition, ct).ConfigureAwait(false);
+        context.AppliedTransition = transition;
+    }
+}
+
+/// <summary>Asigna (o quita, con null) la transición propia de una escena: se usa al entrar en ella.</summary>
+public sealed class SetSceneTransitionCommand(Guid sceneId, TransitionSettings? transition) : IReversibleStudioCommand
+{
+    private TransitionSettings? _previous;
+
+    public string Description => transition is null ? "Quitar transición de la escena" : "Transición de la escena";
+
+    public string? Validate(StudioContext context)
+    {
+        if (context.Project.Scenes.All(s => s.Id != sceneId))
+            return "La escena no existe.";
+        return transition is null ? null : TransitionCatalog.Validate(transition);
+    }
+
+    public Task ExecuteAsync(StudioContext context, CancellationToken ct)
+    {
+        var scene = context.Project.GetScene(sceneId);
+        _previous = scene.TransitionOverride;
+        scene.TransitionOverride = transition;
+        return Task.CompletedTask;
+    }
+
+    public Task UndoAsync(StudioContext context, CancellationToken ct)
+    {
+        context.Project.GetScene(sceneId).TransitionOverride = _previous;
+        return Task.CompletedTask;
     }
 }

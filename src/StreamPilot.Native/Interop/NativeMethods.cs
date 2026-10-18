@@ -8,7 +8,7 @@ namespace StreamPilot.Native.Interop;
 internal static unsafe partial class NativeMethods
 {
     public const string Library = "streampilot_bridge";
-    public const uint ExpectedAbiVersion = 3;
+    public const uint ExpectedAbiVersion = 4;
 
     // ---- General
     [LibraryImport(Library, EntryPoint = "sp_abi_version"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -50,7 +50,7 @@ internal static unsafe partial class NativeMethods
     public static partial SpResult SceneSetProgram(EngineSafeHandle engine, string sceneId);
 
     [LibraryImport(Library, EntryPoint = "sp_transition_set", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    public static partial SpResult TransitionSet(EngineSafeHandle engine, string typeId, uint durationMs);
+    public static partial SpResult TransitionSet(EngineSafeHandle engine, string typeId, uint durationMs, string settingsJson);
 
     // ---- Fuentes
     [LibraryImport(Library, EntryPoint = "sp_source_create", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -92,6 +92,35 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(Library, EntryPoint = "sp_audio_get_levels", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial SpResult AudioGetLevels(EngineSafeHandle engine, string sourceId, out SpAudioLevels levels);
+
+    // ---- Filtros
+    [LibraryImport(Library, EntryPoint = "sp_filter_add", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult FilterAdd(EngineSafeHandle engine, string sourceId, string filterId, string filterType, string name, string settingsJson);
+
+    [LibraryImport(Library, EntryPoint = "sp_filter_remove", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult FilterRemove(EngineSafeHandle engine, string filterId);
+
+    [LibraryImport(Library, EntryPoint = "sp_filter_update", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult FilterUpdate(EngineSafeHandle engine, string filterId, string settingsJson);
+
+    [LibraryImport(Library, EntryPoint = "sp_filter_set_enabled", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult FilterSetEnabled(EngineSafeHandle engine, string filterId, int enabled);
+
+    [LibraryImport(Library, EntryPoint = "sp_filter_types_enumerate"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult FilterTypesEnumerate(EngineSafeHandle engine, delegate* unmanaged[Cdecl]<byte*, byte*, uint, nint, void> callback, nint userData);
+
+    [LibraryImport(Library, EntryPoint = "sp_transition_types_enumerate"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult TransitionTypesEnumerate(EngineSafeHandle engine, delegate* unmanaged[Cdecl]<byte*, byte*, uint, nint, void> callback, nint userData);
+
+    // ---- Animación
+    [LibraryImport(Library, EntryPoint = "sp_anim_play", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult AnimPlay(EngineSafeHandle engine, string itemId, string clipJson, int flags);
+
+    [LibraryImport(Library, EntryPoint = "sp_anim_stop", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult AnimStop(EngineSafeHandle engine, string itemId);
+
+    [LibraryImport(Library, EntryPoint = "sp_anim_is_playing", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult AnimIsPlaying(EngineSafeHandle engine, string itemId, out int playing);
 
     // ---- Elementos
     [LibraryImport(Library, EntryPoint = "sp_item_add", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

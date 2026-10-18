@@ -123,6 +123,23 @@
     <Setter Property="Foreground" Value="#FF1A1300" />
   </Style>
 
+  <!-- Botón AIRE de los gráficos: rojo mientras el gráfico está sobre el programa -->
+  <Style Selector="ToggleButton.air">
+    <Setter Property="Height" Value="24" />
+    <Setter Property="MinWidth" Value="46" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="Background" Value="{StaticResource Sp.Bg3Brush}" />
+  </Style>
+  <Style Selector="ToggleButton.air:checked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Sp.LiveBrush}" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="ToggleButton.air:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#FFF0595E" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+
   <!-- Indicadores de estado (LIVE / REC) -->
   <Style Selector="Border.chip">
     <Setter Property="CornerRadius" Value="10" />

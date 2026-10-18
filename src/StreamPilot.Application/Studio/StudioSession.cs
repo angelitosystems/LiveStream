@@ -1,5 +1,6 @@
 using StreamPilot.Application.Abstractions;
 using StreamPilot.Application.Commands;
+using StreamPilot.Application.Graphics;
 using StreamPilot.Domain.Entities;
 using StreamPilot.Domain.ValueObjects;
 
@@ -26,10 +27,14 @@ public sealed class StudioSession : IAsyncDisposable
         _autosaveDelay = autosaveDelay ?? TimeSpan.FromSeconds(2);
         Executor = new CommandExecutor(new StudioContext(project, engine));
         Executor.StateChanged += (_, _) => ScheduleAutosave();
+        Graphics = new GraphicsService(Executor);
     }
 
     public IStreamingEngine Engine { get; }
     public CommandExecutor Executor { get; }
+
+    /// <summary>Operación en directo de los gráficos (al aire, cuentas atrás, datos en vivo).</summary>
+    public GraphicsService Graphics { get; }
     public StudioProject Project => Executor.Context.Project;
     public string ProjectPath { get; private set; }
 
@@ -54,7 +59,9 @@ public sealed class StudioSession : IAsyncDisposable
     public async Task StartEngineAsync(int adapterIndex = 0, CancellationToken ct = default)
     {
         await Engine.InitializeAsync(EngineSettings.From(Project.Canvas, adapterIndex), ct).ConfigureAwait(false);
-        await EngineSync.LoadProjectAsync(Engine, Project, ct).ConfigureAwait(false);
+        await EngineSync.LoadProjectAsync(Engine, Project, ct, Executor.Context.GraphicText).ConfigureAwait(false);
+        Executor.Context.AppliedTransition = Project.Transition;
+        Graphics.Start();
     }
 
     public async Task SaveAsync(CancellationToken ct = default)
@@ -148,6 +155,7 @@ public sealed class StudioSession : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await Graphics.DisposeAsync().ConfigureAwait(false);
         _autosaveCts?.Cancel();
         try
         {

@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using StreamPilot.Desktop.Studio;
 using StreamPilot.Desktop.ViewModels;
 using StreamPilot.Desktop.Views.Dialogs;
@@ -39,6 +40,8 @@ public sealed partial class MainWindow : Window
         };
         new ProgramDisplayController(vm).Attach(Program);
         vm.StudioModeChanged += (_, _) => ApplyStudioLayout(vm.StudioMode);
+        vm.TransitionNeedsSettings += async (_, type) =>
+            await Guard("Transición", () => ProductionDialogs.ShowTransitionSettingsAsync(vm, null, type));
         ApplyStudioLayout(vm.StudioMode);
     }
 
@@ -96,6 +99,48 @@ public sealed partial class MainWindow : Window
         if (Vm.SelectedSource is { } row)
             await StudioDialogs.ShowTransformAsync(Vm, row.ItemId);
     });
+
+    private async void OnSourceFilters(object? sender, RoutedEventArgs e) => await Guard("Filtros", async () =>
+    {
+        if (Vm.SelectedSource is { } row)
+            await ProductionDialogs.ShowFiltersAsync(Vm, row.SourceId);
+        else
+            Vm.StatusMessage = "Selecciona una fuente para ver sus filtros.";
+    });
+
+    private async void OnMixerFilters(object? sender, RoutedEventArgs e) => await Guard("Filtros", async () =>
+    {
+        if ((sender as Control)?.DataContext is MixerChannelViewModel channel)
+            await ProductionDialogs.ShowFiltersAsync(Vm, channel.SourceId);
+    });
+
+    private async void OnTransitionSettings(object? sender, RoutedEventArgs e) =>
+        await Guard("Transición", () => ProductionDialogs.ShowTransitionSettingsAsync(Vm));
+
+    private async void OnSceneTransition(object? sender, RoutedEventArgs e) => await Guard("Transición de la escena", async () =>
+    {
+        if (Vm.SelectedScene is { } row)
+            await ProductionDialogs.ShowTransitionSettingsAsync(Vm, row.Id);
+    });
+
+    private async void OnEditGraphic(object? sender, RoutedEventArgs e) => await Guard("Gráfico", async () =>
+    {
+        if (Vm.SelectedGraphic is { } row)
+            await ProductionDialogs.ShowGraphicEditorAsync(Vm, row.Id);
+        else
+            Vm.StatusMessage = "Selecciona un gráfico para editarlo.";
+    });
+
+    private void OnGraphicDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        // Doble clic sobre AIRE o los controles de la fila no abre el editor.
+        if (e.Source is Visual v && v.FindAncestorOfType<Avalonia.Controls.Primitives.ToggleButton>(includeSelf: true) is null &&
+            v.FindAncestorOfType<Button>(includeSelf: true) is null)
+            OnEditGraphic(sender, e);
+    }
+
+    private async void OnAddGraphicFromTemplate(object? sender, RoutedEventArgs e) =>
+        await Guard("Plantillas", () => ProductionDialogs.ShowTemplatePickerAsync(Vm));
 
     private async void OnSettings(object? sender, RoutedEventArgs e) => await Guard("Ajustes", () => StudioDialogs.ShowSettingsAsync(Vm));
 

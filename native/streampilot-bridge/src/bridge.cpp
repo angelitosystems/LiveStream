@@ -325,10 +325,21 @@ void render_display(void *param, uint32_t cx, uint32_t cy)
     vec4_set(&canvas_bg, 0.0f, 0.0f, 0.0f, 1.0f);
     draw_solid(canvas_bg, GS_TRISTRIP, {{0, 0, 0}, {bw, 0, 0}, {0, bh, 0}, {bw, bh, 0}});
 
-    if (state->mode == SP_DISPLAY_SCENE && state->scene_source)
+    if (state->mode == SP_DISPLAY_SCENE && state->scene_source) {
         obs_source_video_render(state->scene_source);
-    else
+        // Las capas superpuestas (canales 1+ con video, p. ej. los gráficos) se ven sobre cualquier
+        // escena, igual que en programa: el editor muestra lo que se va a emitir.
+        for (uint32_t channel = 1; channel < MAX_CHANNELS; ++channel) {
+            obs_source_t *overlay = obs_get_output_source(channel);
+            if (!overlay)
+                continue;
+            if (obs_source_get_output_flags(overlay) & OBS_SOURCE_VIDEO)
+                obs_source_video_render(overlay);
+            obs_source_release(overlay);
+        }
+    } else {
         obs_render_main_texture();
+    }
 
     // Superposición del editor.
     const float px = 1.0f / scale; // un píxel de pantalla en unidades del lienzo
@@ -375,8 +386,163 @@ void render_display(void *param, uint32_t cx, uint32_t cy)
 
 } // namespace
 
+// ---- Animación por fotogramas clave ---------------------------------------------------------------
+
+namespace {
+
+enum class anim_prop { x, y, scale_x, scale_y, rotation, opacity, crop_left, crop_top, crop_right, crop_bottom };
+enum class ease { linear, in_cubic, out_cubic, in_out_cubic, out_back, out_expo, hold };
+
+struct anim_key {
+    double t;
+    double v;
+    ease e;
+};
+
+struct anim_track {
+    anim_prop prop;
+    std::vector<anim_key> keys;
+};
+
+struct item_anim {
+    obs_sceneitem_t *item = nullptr;    // referencia propia
+    obs_source_t *opacity = nullptr;    // filtro de opacidad (referencia propia), si hay pista de opacidad
+    double time = 0.0;
+    double delay = 0.0;
+    double duration = 0.0;
+    std::vector<anim_track> tracks;
+    bool hide_at_end = false;
+
+    void release()
+    {
+        obs_sceneitem_release(item);
+        obs_source_release(opacity);
+        item = nullptr;
+        opacity = nullptr;
+    }
+};
+
+double apply_ease(ease e, double x)
+{
+    switch (e) {
+    case ease::in_cubic: return x * x * x;
+    case ease::out_cubic: return 1.0 - std::pow(1.0 - x, 3.0);
+    case ease::in_out_cubic: return x < 0.5 ? 4.0 * x * x * x : 1.0 - std::pow(-2.0 * x + 2.0, 3.0) / 2.0;
+    case ease::out_back: {
+        const double c1 = 1.70158, c3 = c1 + 1.0;
+        return 1.0 + c3 * std::pow(x - 1.0, 3.0) + c1 * std::pow(x - 1.0, 2.0);
+    }
+    case ease::out_expo: return x >= 1.0 ? 1.0 : 1.0 - std::pow(2.0, -10.0 * x);
+    case ease::hold: return 0.0;
+    default: return x;
+    }
+}
+
+/// Valor de una pista en el instante t. La curva de cada tramo es la del fotograma clave de destino.
+double evaluate(const anim_track &track, double t)
+{
+    const auto &k = track.keys;
+    if (t <= k.front().t)
+        return k.front().v;
+    if (t >= k.back().t)
+        return k.back().v;
+    for (size_t i = 1; i < k.size(); ++i) {
+        if (t <= k[i].t) {
+            const double span = k[i].t - k[i - 1].t;
+            const double x = span > 0.0 ? (t - k[i - 1].t) / span : 1.0;
+            return k[i - 1].v + (k[i].v - k[i - 1].v) * apply_ease(k[i].e, x);
+        }
+    }
+    return k.back().v;
+}
+
+void apply_tracks(item_anim &a, double t)
+{
+    obs_sceneitem_t *item = a.item;
+    vec2 pos, scale;
+    obs_sceneitem_get_pos(item, &pos);
+    obs_sceneitem_get_scale(item, &scale);
+    float rot = obs_sceneitem_get_rot(item);
+    obs_sceneitem_crop crop{};
+    obs_sceneitem_get_crop(item, &crop);
+    bool transform = false, cropped = false;
+
+    for (const auto &track : a.tracks) {
+        const double v = evaluate(track, t);
+        switch (track.prop) {
+        case anim_prop::x: pos.x = float(v); transform = true; break;
+        case anim_prop::y: pos.y = float(v); transform = true; break;
+        case anim_prop::scale_x: scale.x = float(v); transform = true; break;
+        case anim_prop::scale_y: scale.y = float(v); transform = true; break;
+        case anim_prop::rotation: rot = float(v); transform = true; break;
+        case anim_prop::crop_left: crop.left = std::max(0, int(std::lround(v))); cropped = true; break;
+        case anim_prop::crop_top: crop.top = std::max(0, int(std::lround(v))); cropped = true; break;
+        case anim_prop::crop_right: crop.right = std::max(0, int(std::lround(v))); cropped = true; break;
+        case anim_prop::crop_bottom: crop.bottom = std::max(0, int(std::lround(v))); cropped = true; break;
+        case anim_prop::opacity:
+            if (a.opacity) {
+                obs_data_t *s = obs_data_create();
+                obs_data_set_double(s, "opacity", std::clamp(v, 0.0, 1.0));
+                obs_source_update(a.opacity, s);
+                obs_data_release(s);
+            }
+            break;
+        }
+    }
+    if (transform || cropped) {
+        obs_sceneitem_defer_update_begin(item);
+        if (transform) {
+            obs_sceneitem_set_pos(item, &pos);
+            obs_sceneitem_set_scale(item, &scale);
+            obs_sceneitem_set_rot(item, rot);
+        }
+        if (cropped)
+            obs_sceneitem_set_crop(item, &crop);
+        obs_sceneitem_defer_update_end(item);
+    }
+}
+
+bool parse_prop(const char *name, anim_prop &out)
+{
+    static const std::pair<const char *, anim_prop> table[] = {
+        {"x", anim_prop::x}, {"y", anim_prop::y}, {"scale_x", anim_prop::scale_x}, {"scale_y", anim_prop::scale_y},
+        {"rotation", anim_prop::rotation}, {"opacity", anim_prop::opacity}, {"crop_left", anim_prop::crop_left},
+        {"crop_top", anim_prop::crop_top}, {"crop_right", anim_prop::crop_right}, {"crop_bottom", anim_prop::crop_bottom},
+    };
+    for (const auto &[n, p] : table) {
+        if (name && std::strcmp(name, n) == 0) {
+            out = p;
+            return true;
+        }
+    }
+    return false;
+}
+
+ease parse_ease(const char *name)
+{
+    static const std::pair<const char *, ease> table[] = {
+        {"in_cubic", ease::in_cubic}, {"out_cubic", ease::out_cubic}, {"in_out_cubic", ease::in_out_cubic},
+        {"out_back", ease::out_back}, {"out_expo", ease::out_expo}, {"hold", ease::hold},
+    };
+    for (const auto &[n, e] : table) {
+        if (name && std::strcmp(name, n) == 0)
+            return e;
+    }
+    return ease::linear;
+}
+
+struct filter_entry {
+    obs_source_t *filter = nullptr; // referencia propia
+    obs_source_t *parent = nullptr; // referencia débil: la propiedad está en sources
+};
+
+} // namespace
+
 struct sp_engine {
     std::map<std::string, obs_scene_t *> scenes;
+    std::map<std::string, filter_entry> filters;
+    std::mutex anim_mutex; // el tick del hilo gráfico recorre anims
+    std::map<std::string, item_anim> anims;
     std::map<std::string, obs_source_t *> sources;
     std::map<std::string, obs_sceneitem_t *> items; // referencias propias
     std::map<std::string, std::unique_ptr<audio_meter>> meters;
@@ -398,6 +564,50 @@ struct sp_engine {
         return it == sources.end() ? nullptr : it->second;
     }
 
+    /// Fuente o escena (como fuente) por id: las escenas se pueden anidar dentro de otras escenas.
+    obs_source_t *find_source_or_scene(const char *id)
+    {
+        if (obs_source_t *source = find_source(id))
+            return source;
+        obs_scene_t *scene = find_scene(id);
+        return scene ? obs_scene_get_source(scene) : nullptr;
+    }
+
+    /// Fuente, escena o filtro por id: ajustes, propiedades y tamaño se leen igual para los tres.
+    obs_source_t *find_any(const char *id)
+    {
+        if (obs_source_t *source = find_source_or_scene(id))
+            return source;
+        const auto it = filters.find(id ? id : "");
+        return it == filters.end() ? nullptr : it->second.filter;
+    }
+
+    void clear_output_channels_of(const std::string &id)
+    {
+        for (auto it = output_channels.begin(); it != output_channels.end();) {
+            if (it->second == id) {
+                obs_set_output_source(it->first, nullptr);
+                it = output_channels.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    /// Detiene animaciones cuyos elementos pertenecen a fuentes/escenas que van a desaparecer.
+    void stop_anims_where(bool (*match)(obs_sceneitem_t *, void *), void *param)
+    {
+        std::lock_guard lock(anim_mutex);
+        for (auto it = anims.begin(); it != anims.end();) {
+            if (match(it->second.item, param)) {
+                it->second.release();
+                it = anims.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
     obs_scene_t *find_scene(const char *id)
     {
         const auto it = scenes.find(id ? id : "");
@@ -408,6 +618,32 @@ struct sp_engine {
     {
         const auto it = items.find(id ? id : "");
         return it == items.end() ? nullptr : it->second;
+    }
+
+    /// Suelta todo lo que depende de una fuente (o escena) que va a desaparecer: animaciones y
+    /// elementos que la usan o que viven dentro de ella, y sus filtros.
+    void forget_dependents(obs_source_t *source, obs_scene_t *scene)
+    {
+        struct ctx {
+            obs_source_t *source;
+            obs_scene_t *scene;
+        } c{source, scene};
+        auto match = [](obs_sceneitem_t *item, void *p) {
+            const auto *c = static_cast<ctx *>(p);
+            return obs_sceneitem_get_source(item) == c->source ||
+                   (c->scene && obs_sceneitem_get_scene(item) == c->scene);
+        };
+        stop_anims_where(match, &c);
+        forget_items_where(match, &c);
+        for (auto it = filters.begin(); it != filters.end();) {
+            if (it->second.parent == source) {
+                obs_source_filter_remove(source, it->second.filter);
+                obs_source_release(it->second.filter);
+                it = filters.erase(it);
+            } else {
+                ++it;
+            }
+        }
     }
 
     void forget_items_where(bool (*match)(obs_sceneitem_t *, void *), void *param)
@@ -530,6 +766,63 @@ void set_display_selection(display_state &state, std::vector<obs_sceneitem_t *> 
         obs_sceneitem_release(item);
 }
 
+/// Avanza las animaciones con el reloj del motor: libobs llama a los callbacks de tick en el hilo
+/// gráfico una vez por fotograma, antes de renderizar, con el tiempo transcurrido desde el anterior.
+void anim_tick(void *param, float seconds)
+{
+    auto *engine = static_cast<sp_engine *>(param);
+    std::lock_guard lock(engine->anim_mutex);
+    for (auto it = engine->anims.begin(); it != engine->anims.end();) {
+        item_anim &a = it->second;
+        a.time += seconds;
+        const double local = a.time - a.delay;
+        if (local < 0.0) {
+            ++it;
+            continue;
+        }
+        apply_tracks(a, std::min(local, a.duration));
+        if (local < a.duration) {
+            ++it;
+            continue;
+        }
+        if (a.hide_at_end)
+            obs_sceneitem_set_visible(a.item, false);
+        a.release();
+        it = engine->anims.erase(it);
+    }
+}
+
+obs_source_t *ensure_opacity_filter(obs_source_t *source)
+{
+    static constexpr const char *name = "sp_opacity";
+    if (obs_source_t *existing = obs_source_get_filter_by_name(source, name))
+        return existing; // ya trae referencia
+    obs_source_t *filter = obs_source_create_private("color_filter_v2", name, nullptr);
+    if (filter)
+        obs_source_filter_add(source, filter);
+    return filter;
+}
+
+bool filter_type_exists(const char *type)
+{
+    const char *id = nullptr;
+    for (size_t i = 0; obs_enum_filter_types(i, &id); ++i) {
+        if (std::strcmp(id, type) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool transition_type_exists(const char *type)
+{
+    const char *id = nullptr;
+    for (size_t i = 0; obs_enum_transition_types(i, &id); ++i) {
+        if (std::strcmp(id, type) == 0)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 extern "C" {
@@ -644,6 +937,7 @@ sp_result SP_CALL sp_engine_create(const sp_engine_config *config, sp_engine **o
         engine->transition = obs_source_create_private("cut_transition", "sp_transition", nullptr);
         if (engine->transition)
             obs_set_output_source(0, engine->transition);
+        obs_add_tick_callback(anim_tick, engine);
         *out_engine = engine;
         return SP_OK;
     });
@@ -654,6 +948,18 @@ void SP_CALL sp_engine_destroy(sp_engine *engine)
     if (!engine)
         return;
     try {
+        obs_remove_tick_callback(anim_tick, engine);
+        {
+            std::lock_guard lock(engine->anim_mutex);
+            for (auto &[id, anim] : engine->anims)
+                anim.release();
+            engine->anims.clear();
+        }
+        for (auto &[id, entry] : engine->filters) {
+            obs_source_filter_remove(entry.parent, entry.filter);
+            obs_source_release(entry.filter);
+        }
+        engine->filters.clear();
         for (auto &[id, display] : engine->displays) {
             obs_display_remove_draw_callback(display->display, render_display, display.get());
             obs_display_destroy(display->display);
@@ -822,9 +1128,9 @@ sp_result SP_CALL sp_scene_remove(sp_engine *engine, const char *scene_id)
         if (source == engine->program_scene)
             return fail(SP_ERR_INVALID_STATE, "No se puede eliminar la escena que está en programa.");
 
-        engine->forget_items_where(
-            [](obs_sceneitem_t *item, void *p) { return obs_sceneitem_get_scene(item) == static_cast<obs_scene_t *>(p); },
-            scene);
+        // Elementos de la escena y elementos de otras escenas que la anidan.
+        engine->clear_output_channels_of(scene_id);
+        engine->forget_dependents(source, scene);
         obs_source_remove(source);
         obs_scene_release(scene);
         engine->scenes.erase(scene_id);
@@ -865,11 +1171,16 @@ sp_result SP_CALL sp_scene_set_program(sp_engine *engine, const char *scene_id)
     });
 }
 
-sp_result SP_CALL sp_transition_set(sp_engine *engine, const char *type_id, uint32_t duration_ms)
+sp_result SP_CALL sp_transition_set(sp_engine *engine, const char *type_id, uint32_t duration_ms,
+                                    const char *settings_json)
 {
     return guarded([&]() -> sp_result {
         SP_REQUIRE(engine && type_id, "engine y type_id son obligatorios.");
-        obs_source_t *transition = obs_source_create_private(type_id, "sp_transition", nullptr);
+        if (!transition_type_exists(type_id))
+            return fail(SP_ERR_NOT_FOUND, std::string("Transición no disponible: ") + type_id);
+        obs_data_t *settings = data_from_json(settings_json);
+        obs_source_t *transition = obs_source_create_private(type_id, "sp_transition", settings);
+        obs_data_release(settings);
         if (!transition)
             return fail(SP_ERR_NOT_FOUND, std::string("Transición no disponible: ") + type_id);
         if (engine->program_scene)
@@ -922,17 +1233,8 @@ sp_result SP_CALL sp_source_remove(sp_engine *engine, const char *source_id)
             return fail(SP_ERR_NOT_FOUND, "Fuente no encontrada.");
 
         engine->meters.erase(source_id);
-        for (auto it = engine->output_channels.begin(); it != engine->output_channels.end();) {
-            if (it->second == source_id) {
-                obs_set_output_source(it->first, nullptr);
-                it = engine->output_channels.erase(it);
-            } else {
-                ++it;
-            }
-        }
-        engine->forget_items_where(
-            [](obs_sceneitem_t *item, void *p) { return obs_sceneitem_get_source(item) == static_cast<obs_source_t *>(p); },
-            source);
+        engine->clear_output_channels_of(source_id);
+        engine->forget_dependents(source, nullptr);
         obs_source_remove(source); // las escenas sueltan sus elementos al recibir la señal
         obs_source_release(source);
         engine->sources.erase(source_id);
@@ -971,7 +1273,7 @@ sp_result SP_CALL sp_source_get_settings(sp_engine *engine, const char *source_i
 {
     return guarded([&]() -> sp_result {
         SP_REQUIRE(engine && source_id, "engine y source_id son obligatorios.");
-        obs_source_t *source = engine->find_source(source_id);
+        obs_source_t *source = engine->find_any(source_id);
         if (!source)
             return fail(SP_ERR_NOT_FOUND, "Fuente no encontrada.");
         obs_data_t *settings = obs_source_get_settings(source);
@@ -1109,7 +1411,7 @@ sp_result SP_CALL sp_source_get_properties(sp_engine *engine, const char *source
 {
     return guarded([&]() -> sp_result {
         SP_REQUIRE(engine && source_id, "engine y source_id son obligatorios.");
-        obs_source_t *source = engine->find_source(source_id);
+        obs_source_t *source = engine->find_any(source_id);
         if (!source)
             return fail(SP_ERR_NOT_FOUND, "Fuente no encontrada.");
         obs_properties_t *props = obs_source_properties(source);
@@ -1128,7 +1430,7 @@ sp_result SP_CALL sp_source_get_size(sp_engine *engine, const char *source_id, u
 {
     return guarded([&]() -> sp_result {
         SP_REQUIRE(engine && source_id && width && height, "Faltan argumentos obligatorios.");
-        obs_source_t *source = engine->find_source(source_id);
+        obs_source_t *source = engine->find_any(source_id);
         if (!source)
             return fail(SP_ERR_NOT_FOUND, "Fuente no encontrada.");
         *width = obs_source_get_width(source);
@@ -1142,7 +1444,7 @@ sp_result SP_CALL sp_source_set_output_channel(sp_engine *engine, const char *so
     return guarded([&]() -> sp_result {
         SP_REQUIRE(engine && source_id, "engine y source_id son obligatorios.");
         SP_REQUIRE(channel < MAX_CHANNELS, "Canal fuera de rango.");
-        obs_source_t *source = engine->find_source(source_id);
+        obs_source_t *source = engine->find_source_or_scene(source_id);
         if (!source)
             return fail(SP_ERR_NOT_FOUND, "Fuente no encontrada.");
         // El canal 0 es el programa (transición); los globales de audio empiezan en 1.
@@ -1239,12 +1541,14 @@ sp_result SP_CALL sp_item_add(sp_engine *engine, const char *scene_id, const cha
         if (engine->items.count(item_id))
             return fail(SP_ERR_INVALID_STATE, "El elemento ya existe.");
         obs_scene_t *scene = engine->find_scene(scene_id);
-        obs_source_t *source = engine->find_source(source_id);
+        obs_source_t *source = engine->find_source_or_scene(source_id);
         if (!scene || !source)
             return fail(SP_ERR_NOT_FOUND, "Escena o fuente no encontrada.");
+        if (source == obs_scene_get_source(scene))
+            return fail(SP_ERR_INVALID_ARG, "Una escena no se puede anidar dentro de sí misma.");
         obs_sceneitem_t *item = obs_scene_add(scene, source);
-        if (!item)
-            return fail(SP_ERR_CREATE_FAILED, "obs_scene_add falló.");
+        if (!item) // libobs también lo rechaza si crearía un ciclo de escenas anidadas
+            return fail(SP_ERR_CREATE_FAILED, "obs_scene_add falló (¿anidamiento circular?).");
         obs_sceneitem_addref(item);
         obs_sceneitem_set_alignment(item, OBS_ALIGN_LEFT | OBS_ALIGN_TOP);
         engine->items.emplace(item_id, item);
@@ -1259,6 +1563,13 @@ sp_result SP_CALL sp_item_remove(sp_engine *engine, const char *item_id)
         obs_sceneitem_t *item = engine->find_item(item_id);
         if (!item)
             return fail(SP_ERR_NOT_FOUND, "Elemento no encontrado.");
+        {
+            std::lock_guard lock(engine->anim_mutex);
+            if (auto it = engine->anims.find(item_id); it != engine->anims.end()) {
+                it->second.release();
+                engine->anims.erase(it);
+            }
+        }
         obs_sceneitem_remove(item);
         obs_sceneitem_release(item);
         engine->items.erase(item_id);
@@ -1554,6 +1865,228 @@ sp_result SP_CALL sp_display_set_overlay(sp_engine *engine, const char *display_
         std::lock_guard lock(it->second->mutex);
         it->second->guides_x.assign(guides_x, guides_x + (guides_x ? guides_x_count : 0));
         it->second->guides_y.assign(guides_y, guides_y + (guides_y ? guides_y_count : 0));
+        return SP_OK;
+    });
+}
+
+// ---- Filtros ------------------------------------------------------------------------------------
+
+sp_result SP_CALL sp_filter_add(sp_engine *engine, const char *source_id, const char *filter_id,
+                                const char *filter_type, const char *name, const char *settings_json)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && source_id && filter_id && filter_type && name, "Faltan argumentos obligatorios.");
+        if (engine->filters.count(filter_id))
+            return fail(SP_ERR_INVALID_STATE, "El filtro ya existe.");
+        obs_source_t *parent = engine->find_source_or_scene(source_id);
+        if (!parent)
+            return fail(SP_ERR_NOT_FOUND, "Fuente no encontrada.");
+        if (!filter_type_exists(filter_type))
+            return fail(SP_ERR_NOT_FOUND, std::string("Tipo de filtro no disponible: ") + filter_type);
+        // Un filtro de audio sobre una fuente sin audio (o de video sobre una sin video) no haría nada.
+        const uint32_t needs = obs_get_source_output_flags(filter_type) & (OBS_SOURCE_AUDIO | OBS_SOURCE_VIDEO);
+        if (needs && !(obs_source_get_output_flags(parent) & needs))
+            return fail(SP_ERR_INVALID_ARG, "El filtro no es compatible con esta fuente.");
+
+        obs_data_t *settings = data_from_json(settings_json);
+        // Privado: el nombre lo gestiona la aplicación y no choca con otros filtros de la fuente.
+        obs_source_t *filter = obs_source_create_private(filter_type, name, settings);
+        obs_data_release(settings);
+        if (!filter)
+            return fail(SP_ERR_CREATE_FAILED, std::string("No se pudo crear el filtro ") + filter_type);
+        obs_source_filter_add(parent, filter);
+        engine->filters.emplace(filter_id, filter_entry{filter, parent});
+        return SP_OK;
+    });
+}
+
+sp_result SP_CALL sp_filter_remove(sp_engine *engine, const char *filter_id)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && filter_id, "engine y filter_id son obligatorios.");
+        const auto it = engine->filters.find(filter_id);
+        if (it == engine->filters.end())
+            return fail(SP_ERR_NOT_FOUND, "Filtro no encontrado.");
+        obs_source_filter_remove(it->second.parent, it->second.filter);
+        obs_source_release(it->second.filter);
+        engine->filters.erase(it);
+        return SP_OK;
+    });
+}
+
+sp_result SP_CALL sp_filter_update(sp_engine *engine, const char *filter_id, const char *settings_json)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && filter_id, "engine y filter_id son obligatorios.");
+        const auto it = engine->filters.find(filter_id);
+        if (it == engine->filters.end())
+            return fail(SP_ERR_NOT_FOUND, "Filtro no encontrado.");
+        obs_data_t *settings = data_from_json(settings_json);
+        obs_source_update(it->second.filter, settings);
+        obs_data_release(settings);
+        return SP_OK;
+    });
+}
+
+sp_result SP_CALL sp_filter_set_enabled(sp_engine *engine, const char *filter_id, int32_t enabled)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && filter_id, "engine y filter_id son obligatorios.");
+        const auto it = engine->filters.find(filter_id);
+        if (it == engine->filters.end())
+            return fail(SP_ERR_NOT_FOUND, "Filtro no encontrado.");
+        obs_source_set_enabled(it->second.filter, enabled != 0);
+        return SP_OK;
+    });
+}
+
+namespace {
+
+uint32_t type_flags(uint32_t obs_flags)
+{
+    return ((obs_flags & OBS_SOURCE_VIDEO) ? 1u : 0u) | ((obs_flags & OBS_SOURCE_AUDIO) ? 2u : 0u);
+}
+
+sp_result enumerate_types(sp_engine *engine, sp_type_callback callback, void *user_data,
+                          bool (*enumerate)(size_t, const char **))
+{
+    if (!engine || !callback)
+        return fail(SP_ERR_INVALID_ARG, "engine y callback son obligatorios.");
+    const char *id = nullptr;
+    for (size_t i = 0; enumerate(i, &id); ++i) {
+        const uint32_t flags = obs_get_source_output_flags(id);
+        if (flags & (OBS_SOURCE_DEPRECATED | OBS_SOURCE_CAP_DISABLED))
+            continue;
+        const char *name = obs_source_get_display_name(id);
+        callback(id, name ? name : id, type_flags(flags), user_data);
+    }
+    return SP_OK;
+}
+
+} // namespace
+
+sp_result SP_CALL sp_filter_types_enumerate(sp_engine *engine, sp_type_callback callback, void *user_data)
+{
+    return guarded([&] { return enumerate_types(engine, callback, user_data, obs_enum_filter_types); });
+}
+
+sp_result SP_CALL sp_transition_types_enumerate(sp_engine *engine, sp_type_callback callback, void *user_data)
+{
+    return guarded([&] { return enumerate_types(engine, callback, user_data, obs_enum_transition_types); });
+}
+
+// ---- Animación ----------------------------------------------------------------------------------
+
+sp_result SP_CALL sp_anim_play(sp_engine *engine, const char *item_id, const char *clip_json, int32_t flags)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && item_id && clip_json, "engine, item_id y clip_json son obligatorios.");
+        obs_sceneitem_t *item = engine->find_item(item_id);
+        if (!item)
+            return fail(SP_ERR_NOT_FOUND, "Elemento no encontrado.");
+
+        obs_data_t *clip = obs_data_create_from_json(clip_json);
+        if (!clip)
+            return fail(SP_ERR_INVALID_ARG, "clip_json no es JSON válido.");
+        item_anim anim;
+        anim.delay = std::max(0.0, obs_data_get_double(clip, "delay"));
+        anim.hide_at_end = (flags & SP_ANIM_HIDE_AT_END) != 0;
+        bool has_opacity = false;
+        std::string error;
+        obs_data_array_t *tracks = obs_data_get_array(clip, "tracks");
+        const size_t track_count = tracks ? obs_data_array_count(tracks) : 0;
+        for (size_t i = 0; i < track_count && error.empty(); ++i) {
+            obs_data_t *t = obs_data_array_item(tracks, i);
+            anim_track track{};
+            if (!parse_prop(obs_data_get_string(t, "p"), track.prop))
+                error = std::string("Propiedad animable desconocida: ") + obs_data_get_string(t, "p");
+            obs_data_array_t *keys = obs_data_get_array(t, "k");
+            const size_t key_count = keys ? obs_data_array_count(keys) : 0;
+            for (size_t j = 0; j < key_count; ++j) {
+                obs_data_t *k = obs_data_array_item(keys, j);
+                track.keys.push_back({obs_data_get_double(k, "t"), obs_data_get_double(k, "v"),
+                                      parse_ease(obs_data_get_string(k, "e"))});
+                obs_data_release(k);
+            }
+            obs_data_array_release(keys);
+            if (error.empty() && track.keys.empty())
+                error = "Cada pista necesita al menos un fotograma clave.";
+            if (error.empty()) {
+                std::stable_sort(track.keys.begin(), track.keys.end(),
+                                 [](const anim_key &a, const anim_key &b) { return a.t < b.t; });
+                if (track.keys.front().t < 0.0)
+                    error = "Los tiempos de los fotogramas clave no pueden ser negativos.";
+            }
+            if (error.empty()) {
+                has_opacity |= track.prop == anim_prop::opacity;
+                anim.duration = std::max(anim.duration, track.keys.back().t);
+                anim.tracks.push_back(std::move(track));
+            }
+            obs_data_release(t);
+        }
+        // "duration" explícita alarga el clip (p. ej. mantener un rótulo en pantalla antes de ocultarlo).
+        anim.duration = std::max(anim.duration, obs_data_get_double(clip, "duration"));
+        obs_data_array_release(tracks);
+        obs_data_release(clip);
+        if (!error.empty())
+            return fail(SP_ERR_INVALID_ARG, error);
+        if (anim.tracks.empty() && anim.duration <= 0.0)
+            return fail(SP_ERR_INVALID_ARG, "El clip no tiene pistas ni duración.");
+
+        obs_sceneitem_addref(item);
+        anim.item = item;
+        obs_source_t *source = obs_sceneitem_get_source(item);
+        if (has_opacity) {
+            anim.opacity = ensure_opacity_filter(source);
+            if (!anim.opacity) {
+                anim.release();
+                return fail(SP_ERR_CREATE_FAILED, "No se pudo crear el filtro de opacidad (color_filter_v2).");
+            }
+            obs_source_set_enabled(anim.opacity, true);
+        } else if (obs_source_t *previous = obs_source_get_filter_by_name(source, "sp_opacity")) {
+            // Un clip sin opacidad no debe heredar la de una animación anterior (p. ej. una salida a 0).
+            obs_data_t *s = obs_data_create();
+            obs_data_set_double(s, "opacity", 1.0);
+            obs_source_update(previous, s);
+            obs_data_release(s);
+            obs_source_set_enabled(previous, false);
+            obs_source_release(previous);
+        }
+
+        std::lock_guard lock(engine->anim_mutex);
+        if (auto it = engine->anims.find(item_id); it != engine->anims.end()) {
+            it->second.release();
+            engine->anims.erase(it);
+        }
+        // Estado inicial aplicado ya, para que el primer fotograma visible no muestre la posición previa.
+        apply_tracks(anim, 0.0);
+        if (flags & SP_ANIM_SHOW_AT_START)
+            obs_sceneitem_set_visible(item, true);
+        engine->anims.emplace(item_id, std::move(anim));
+        return SP_OK;
+    });
+}
+
+sp_result SP_CALL sp_anim_stop(sp_engine *engine, const char *item_id)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && item_id, "engine e item_id son obligatorios.");
+        std::lock_guard lock(engine->anim_mutex);
+        const auto it = engine->anims.find(item_id);
+        if (it == engine->anims.end())
+            return SP_OK; // ya terminó: detener es idempotente
+        it->second.release();
+        engine->anims.erase(it);
+        return SP_OK;
+    });
+}
+
+sp_result SP_CALL sp_anim_is_playing(sp_engine *engine, const char *item_id, int32_t *playing)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && item_id && playing, "engine, item_id y playing son obligatorios.");
+        std::lock_guard lock(engine->anim_mutex);
+        *playing = engine->anims.count(item_id) ? 1 : 0;
         return SP_OK;
     });
 }

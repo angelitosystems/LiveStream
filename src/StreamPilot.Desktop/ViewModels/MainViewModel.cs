@@ -6,12 +6,15 @@ using CommunityToolkit.Mvvm.Input;
 using StreamPilot.Application.Abstractions;
 using StreamPilot.Application.Audio;
 using StreamPilot.Application.Commands;
+using StreamPilot.Application.Graphics;
 using StreamPilot.Application.Scenes;
 using StreamPilot.Application.Sources;
 using StreamPilot.Application.Studio;
 using StreamPilot.Desktop.Services;
 using StreamPilot.Domain.Entities;
+using StreamPilot.Domain.Graphics;
 using StreamPilot.Domain.ValueObjects;
+using StreamPilot.Infrastructure.Persistence;
 using StreamPilot.Native.Engine;
 
 namespace StreamPilot.Desktop.ViewModels;
@@ -40,6 +43,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Executor.StateChanged += (_, _) => Dispatcher.UIThread.Post(Refresh);
         Session.AutosaveFailed += (_, ex) => Dispatcher.UIThread.Post(() => StatusMessage = $"No se pudo guardar: {ex.Message}");
         Session.Saved += (_, _) => Dispatcher.UIThread.Post(() => LastSaved = DateTime.Now.ToString("HH:mm:ss"));
+        Session.Graphics.Changed += (_, _) => Dispatcher.UIThread.Post(RefreshGraphicsLive);
+        Session.Graphics.Error += (_, message) => Dispatcher.UIThread.Post(() => StatusMessage = message);
 
         _metricsTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, async (_, _) => await PollMetricsAsync());
         _meterTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, async (_, _) => await PollMetersAsync());
@@ -56,6 +61,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<SourceRowViewModel> Sources { get; } = [];
     public ObservableCollection<MixerChannelViewModel> Mixer { get; } = [];
     public IReadOnlyList<KeyValuePair<string, string>> Transitions { get; } = SetTransitionCommand.Available.ToList();
+    public ObservableCollection<GraphicRowViewModel> Graphics { get; } = [];
+    public IReadOnlyList<GraphicKindOption> GraphicKinds { get; } =
+        GraphicTemplates.Kinds.Select(k => new GraphicKindOption(k, GraphicTemplates.DisplayName(k))).ToList();
+    public IGraphicTemplateLibrary Templates { get; } = new GraphicTemplateLibrary();
+
+    /// <summary>Se eligió una transición que necesita ajustes (p. ej. el video del stinger) antes de aplicarse.</summary>
+    public event EventHandler<string>? TransitionNeedsSettings;
 
     /// <summary>Elementos seleccionados en el editor (puede haber varios con Ctrl).</summary>
     public HashSet<Guid> SelectedItems { get; } = [];
@@ -66,6 +78,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     [ObservableProperty] private SceneRowViewModel? _selectedScene;
     [ObservableProperty] private SourceRowViewModel? _selectedSource;
+    [ObservableProperty] private GraphicRowViewModel? _selectedGraphic;
     [ObservableProperty] private bool _engineReady;
     [ObservableProperty] private string? _engineError;
     [ObservableProperty] private string? _statusMessage;
@@ -162,6 +175,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             SelectedSource = Sources.FirstOrDefault(s => SelectedItems.Contains(s.ItemId));
 
             RefreshMixer(editScene);
+            RefreshGraphics();
 
             TransitionId = Project.Transition.TypeId;
             TransitionDurationMs = Project.Transition.DurationMs;
@@ -478,9 +492,176 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_refreshing)
             return;
-        var settings = new TransitionSettings(TransitionId, TransitionDurationMs);
-        if (settings != Project.Transition)
-            _ = Run(new SetTransitionCommand(settings));
+        var json = TransitionId == Project.Transition.TypeId ? Project.Transition.SettingsJson : "{}";
+        var settings = new TransitionSettings(TransitionId, TransitionDurationMs, json);
+        if (settings == Project.Transition)
+            return;
+        if (TransitionId == TransitionCatalog.Stinger && TransitionCatalog.Validate(settings) is not null)
+        {
+            // Sin video no hay stinger: se vuelve a la transición actual y se abren sus ajustes.
+            var requested = TransitionId;
+            Dispatcher.UIThread.Post(() =>
+            {
+                TransitionId = Project.Transition.TypeId;
+                TransitionNeedsSettings?.Invoke(this, requested);
+            });
+            return;
+        }
+        _ = Run(new SetTransitionCommand(settings));
+    }
+
+    // ---- Gráficos -------------------------------------------------------------------------------
+
+    private void RefreshGraphics()
+    {
+        var ids = Project.Graphics.Reverse().Select(g => g.Id).ToList(); // arriba = capa superior
+        Sync(Graphics, ids, id => new GraphicRowViewModel(id, Project.GetGraphic(id).Kind), r => r.Id);
+        foreach (var row in Graphics)
+            row.Name = Project.GetGraphic(row.Id).Name;
+        RefreshGraphicsLive();
+    }
+
+    /// <summary>Estado en directo: al aire, cuenta atrás y marcador. Barato: se llama también desde el temporizador.</summary>
+    public void RefreshGraphicsLive()
+    {
+        foreach (var row in Graphics)
+        {
+            if (Project.FindGraphic(row.Id) is not { } g)
+                continue;
+            row.OnAir = Session.Graphics.IsOnAir(row.Id);
+            switch (g.Kind)
+            {
+                case GraphicKind.Countdown:
+                    var status = Session.Graphics.GetCountdown(row.Id);
+                    row.CountdownRunning = status.Running;
+                    row.Detail = GraphicTemplates.FormatRemaining(status.Remaining) + (status.Running ? " ▶" : "");
+                    break;
+                case GraphicKind.Scoreboard:
+                    row.Detail = $"{g.Field("home")} {g.Field("homeScore")} - {g.Field("awayScore")} {g.Field("away")}";
+                    break;
+                default:
+                    row.Detail = row.KindLabel;
+                    break;
+            }
+        }
+    }
+
+    private string NextGraphicName(string baseName)
+    {
+        if (!Project.HasGraphicNamed(baseName))
+            return baseName;
+        for (var i = 2; ; i++)
+            if (!Project.HasGraphicNamed($"{baseName} {i}"))
+                return $"{baseName} {i}";
+    }
+
+    [RelayCommand]
+    private async Task AddGraphic(GraphicKind kind)
+    {
+        var graphic = GraphicTemplates.Create(kind, NextGraphicName(GraphicTemplates.DisplayName(kind)), Project.Canvas);
+        if ((await Run(new AddGraphicCommand(graphic))).Success)
+            SelectGraphic(graphic.Id);
+    }
+
+    /// <summary>El refresco tras un comando llega por el despachador: se adelanta para poder seleccionar la fila nueva.</summary>
+    private void SelectGraphic(Guid id)
+    {
+        RefreshGraphics();
+        SelectedGraphic = Graphics.FirstOrDefault(g => g.Id == id);
+    }
+
+    public async Task<bool> AddGraphicFromTemplateAsync(string templateName)
+    {
+        var graphic = await Templates.InstantiateAsync(templateName, CancellationToken.None);
+        graphic = graphic with { Name = NextGraphicName(graphic.Name) };
+        var ok = (await Run(new AddGraphicCommand(graphic))).Success;
+        if (ok)
+            SelectGraphic(graphic.Id);
+        return ok;
+    }
+
+    [RelayCommand]
+    private async Task RemoveGraphic()
+    {
+        if (SelectedGraphic is not { } row)
+            return;
+        if (row.OnAir && !await Dialogs.ConfirmAsync("Eliminar gráfico", $"«{row.Name}» está al aire. ¿Retirarlo y eliminarlo?", "Eliminar", destructive: true))
+            return;
+        await Run(new RemoveGraphicCommand(row.Id));
+    }
+
+    [RelayCommand]
+    private async Task DuplicateGraphic()
+    {
+        if (SelectedGraphic is not { } row || Project.FindGraphic(row.Id) is not { } g)
+            return;
+        var copy = g with { Id = Guid.NewGuid(), Name = NextGraphicName(g.Name), DataFile = null };
+        if ((await Run(new AddGraphicCommand(copy))).Success)
+            SelectGraphic(copy.Id);
+    }
+
+    [RelayCommand]
+    private Task MoveGraphicUp() => MoveGraphic(+1);
+
+    [RelayCommand]
+    private Task MoveGraphicDown() => MoveGraphic(-1);
+
+    private Task MoveGraphic(int delta)
+    {
+        if (SelectedGraphic is not { } row)
+            return Task.CompletedTask;
+        var index = Project.IndexOfGraphic(row.Id) + delta;
+        return index < 0 || index >= Project.Graphics.Count ? Task.CompletedTask : Run(new MoveGraphicCommand(row.Id, index));
+    }
+
+    [RelayCommand]
+    private async Task ToggleGraphic(GraphicRowViewModel row)
+    {
+        try
+        {
+            await Session.Graphics.ToggleAsync(row.Id);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"No se pudo lanzar «{row.Name}»: {ex.Message}";
+            Infrastructure.Diagnostics.AppLog.Warn("gráficos", StatusMessage);
+        }
+        RefreshGraphicsLive();
+    }
+
+    [RelayCommand]
+    private async Task TakeAllGraphicsOut()
+    {
+        await Session.Graphics.TakeAllOutAsync();
+        RefreshGraphicsLive();
+    }
+
+    [RelayCommand]
+    private void CountdownStartPause(GraphicRowViewModel row)
+    {
+        if (Session.Graphics.GetCountdown(row.Id).Running)
+            Session.Graphics.PauseCountdown(row.Id);
+        else
+            Session.Graphics.StartCountdown(row.Id);
+    }
+
+    [RelayCommand]
+    private void CountdownReset(GraphicRowViewModel row) => Session.Graphics.ResetCountdown(row.Id);
+
+    [RelayCommand]
+    private Task ScoreHome(GraphicRowViewModel row) => AddScore(row, "homeScore");
+
+    [RelayCommand]
+    private Task ScoreAway(GraphicRowViewModel row) => AddScore(row, "awayScore");
+
+    /// <summary>Suma un tanto (deshacer lo corrige si fue un error del operador).</summary>
+    private Task AddScore(GraphicRowViewModel row, string key)
+    {
+        if (Project.FindGraphic(row.Id) is not { } g)
+            return Task.CompletedTask;
+        var current = int.TryParse(g.Field(key), out var n) ? n : 0;
+        var fields = new Dictionary<string, string>(g.Fields) { [key] = (current + 1).ToString() };
+        return Run(new UpdateGraphicCommand(g with { Fields = fields }));
     }
 
     // ---- Mezclador ------------------------------------------------------------------------------
@@ -491,8 +672,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private Task ToggleMute(MixerChannelViewModel channel) => Run(new SetMutedCommand(channel.SourceId, !channel.Muted));
 
+    private int _meterTicks;
+
     private async Task PollMetersAsync()
     {
+        if (++_meterTicks % 6 == 0 && Graphics.Any(g => g.IsCountdown))
+            RefreshGraphicsLive();
         if (!EngineReady || _metersBusy || Mixer.Count == 0)
             return;
         _metersBusy = true;

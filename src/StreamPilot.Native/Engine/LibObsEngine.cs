@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using StreamPilot.Application.Abstractions;
+using StreamPilot.Domain.Animation;
 using StreamPilot.Domain.Entities;
 using StreamPilot.Domain.ValueObjects;
 using StreamPilot.Native.Handles;
@@ -168,7 +169,8 @@ public sealed class LibObsEngine : IStreamingEngine, IEngineDisplays
         Run(e => Check(NativeMethods.SceneSetProgram(e, Id(sceneId)), "sp_scene_set_program"), ct);
 
     public Task SetTransitionAsync(TransitionSettings transition, CancellationToken ct) =>
-        Run(e => Check(NativeMethods.TransitionSet(e, transition.TypeId, (uint)Math.Max(0, transition.DurationMs)), "sp_transition_set"), ct);
+        Run(e => Check(NativeMethods.TransitionSet(e, transition.TypeId, (uint)Math.Max(0, transition.DurationMs),
+            string.IsNullOrWhiteSpace(transition.SettingsJson) ? "{}" : transition.SettingsJson), "sp_transition_set"), ct);
 
     // ---- Fuentes ---------------------------------------------------------------------------------
 
@@ -248,6 +250,78 @@ public sealed class LibObsEngine : IStreamingEngine, IEngineDisplays
 
     // ---- Elementos -------------------------------------------------------------------------------
 
+    // ---- Filtros ---------------------------------------------------------------------------------
+
+    public Task<IReadOnlyList<EngineTypeInfo>> ListFilterTypesAsync(CancellationToken ct) => Run<IReadOnlyList<EngineTypeInfo>>(e =>
+    {
+        var types = new List<EngineTypeInfo>();
+        var handle = GCHandle.Alloc(types);
+        try
+        {
+            unsafe
+            {
+                Check(NativeMethods.FilterTypesEnumerate(e, &OnType, GCHandle.ToIntPtr(handle)), "sp_filter_types_enumerate");
+            }
+        }
+        finally
+        {
+            handle.Free();
+        }
+        return types;
+    }, ct);
+
+    public Task<IReadOnlyList<EngineTypeInfo>> ListTransitionTypesAsync(CancellationToken ct) => Run<IReadOnlyList<EngineTypeInfo>>(e =>
+    {
+        var types = new List<EngineTypeInfo>();
+        var handle = GCHandle.Alloc(types);
+        try
+        {
+            unsafe
+            {
+                Check(NativeMethods.TransitionTypesEnumerate(e, &OnType, GCHandle.ToIntPtr(handle)), "sp_transition_types_enumerate");
+            }
+        }
+        finally
+        {
+            handle.Free();
+        }
+        return types;
+    }, ct);
+
+    public Task AddFilterAsync(Guid sourceId, Guid filterId, string typeId, string name, string settingsJson, CancellationToken ct) =>
+        Run(e => Check(NativeMethods.FilterAdd(e, Id(sourceId), Id(filterId), typeId, name,
+            string.IsNullOrWhiteSpace(settingsJson) ? "{}" : settingsJson), "sp_filter_add"), ct);
+
+    public Task RemoveFilterAsync(Guid filterId, CancellationToken ct) =>
+        Run(e => Check(NativeMethods.FilterRemove(e, Id(filterId)), "sp_filter_remove"), ct);
+
+    public Task UpdateFilterAsync(Guid filterId, string settingsJson, CancellationToken ct) =>
+        Run(e => Check(NativeMethods.FilterUpdate(e, Id(filterId), settingsJson), "sp_filter_update"), ct);
+
+    public Task SetFilterEnabledAsync(Guid filterId, bool enabled, CancellationToken ct) =>
+        Run(e => Check(NativeMethods.FilterSetEnabled(e, Id(filterId), enabled ? 1 : 0), "sp_filter_set_enabled"), ct);
+
+    // ---- Animación -------------------------------------------------------------------------------
+
+    public Task PlayAnimationAsync(Guid itemId, AnimationClip clip, AnimationFlags flags, CancellationToken ct)
+    {
+        if (clip.Validate() is { } error)
+            throw new ArgumentException(error, nameof(clip));
+        var json = AnimationClipJson.Serialize(clip);
+        return Run(e => Check(NativeMethods.AnimPlay(e, Id(itemId), json, (int)flags), "sp_anim_play"), ct);
+    }
+
+    public Task StopAnimationAsync(Guid itemId, CancellationToken ct) =>
+        Run(e => Check(NativeMethods.AnimStop(e, Id(itemId)), "sp_anim_stop"), ct);
+
+    public Task<bool> IsAnimationPlayingAsync(Guid itemId, CancellationToken ct) => Run(e =>
+    {
+        Check(NativeMethods.AnimIsPlaying(e, Id(itemId), out var playing), "sp_anim_is_playing");
+        return playing != 0;
+    }, ct);
+
+    // ---- Elementos -------------------------------------------------------------------------------
+
     public Task AddItemAsync(Guid sceneId, Guid itemId, Guid sourceId, CancellationToken ct) =>
         Run(e => Check(NativeMethods.ItemAdd(e, Id(sceneId), Id(itemId), Id(sourceId)), "sp_item_add"), ct);
 
@@ -262,6 +336,12 @@ public sealed class LibObsEngine : IStreamingEngine, IEngineDisplays
             CropLeft = t.CropLeft, CropTop = t.CropTop, CropRight = t.CropRight, CropBottom = t.CropBottom,
         };
         Check(NativeMethods.ItemSetTransform(e, Id(itemId), in native), "sp_item_set_transform");
+    }, ct);
+
+    public Task<Transform> GetItemTransformAsync(Guid itemId, CancellationToken ct) => Run(e =>
+    {
+        Check(NativeMethods.ItemGetTransform(e, Id(itemId), out var t), "sp_item_get_transform");
+        return new Transform(t.PosX, t.PosY, t.ScaleX, t.ScaleY, t.RotationDeg, t.CropLeft, t.CropTop, t.CropRight, t.CropBottom);
     }, ct);
 
     public Task SetItemVisibleAsync(Guid itemId, bool visible, CancellationToken ct) =>
@@ -396,6 +476,17 @@ public sealed class LibObsEngine : IStreamingEngine, IEngineDisplays
             Marshal.PtrToStringUTF8((nint)id) ?? string.Empty,
             Marshal.PtrToStringUTF8((nint)name) ?? string.Empty,
             Marshal.PtrToStringUTF8((nint)codec) ?? string.Empty));
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnType(byte* id, byte* name, uint flags, nint userData)
+    {
+        var types = (List<EngineTypeInfo>)GCHandle.FromIntPtr(userData).Target!;
+        types.Add(new EngineTypeInfo(
+            Marshal.PtrToStringUTF8((nint)id) ?? string.Empty,
+            Marshal.PtrToStringUTF8((nint)name) ?? string.Empty,
+            (flags & 1) != 0,
+            (flags & 2) != 0));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]

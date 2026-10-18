@@ -1,4 +1,5 @@
 using StreamPilot.Application.Abstractions;
+using StreamPilot.Domain.Animation;
 using StreamPilot.Domain.Entities;
 using StreamPilot.Domain.ValueObjects;
 
@@ -18,6 +19,9 @@ internal sealed class FakeStreamingEngine : IStreamingEngine
     public TransitionSettings? Transition { get; private set; }
     public List<string> Calls { get; } = [];
     public StreamTarget? LastStream { get; private set; }
+    public Dictionary<Guid, (Guid SourceId, string TypeId, string SettingsJson, bool Enabled)> Filters { get; } = [];
+    public Dictionary<Guid, (AnimationClip Clip, AnimationFlags Flags)> Animations { get; } = [];
+    public Dictionary<Guid, int> Channels { get; } = [];
 
     public Task InitializeAsync(EngineSettings settings, CancellationToken ct) { IsInitialized = true; return Task.CompletedTask; }
     public Task ShutdownAsync(CancellationToken ct) { IsInitialized = false; return Task.CompletedTask; }
@@ -35,7 +39,9 @@ internal sealed class FakeStreamingEngine : IStreamingEngine
     {
         if (ProgramScene == sceneId) throw new InvalidOperationException("Escena en programa.");
         Scenes.Remove(sceneId);
-        foreach (var item in Items.Where(i => i.Value.SceneId == sceneId).Select(i => i.Key).ToList()) Items.Remove(item);
+        Channels.Remove(sceneId);
+        foreach (var item in Items.Where(i => i.Value.SceneId == sceneId || i.Value.SourceId == sceneId).Select(i => i.Key).ToList()) Items.Remove(item);
+        foreach (var filter in Filters.Where(f => f.Value.SourceId == sceneId).Select(f => f.Key).ToList()) Filters.Remove(filter);
     });
 
     public Task RenameSceneAsync(Guid sceneId, string name, CancellationToken ct) => Do("scene~", () => Scenes[sceneId] = name);
@@ -51,15 +57,47 @@ internal sealed class FakeStreamingEngine : IStreamingEngine
     public Task RemoveSourceAsync(Guid sourceId, CancellationToken ct) => Do("source-", () =>
     {
         Sources.Remove(sourceId);
+        Channels.Remove(sourceId);
         foreach (var item in Items.Where(i => i.Value.SourceId == sourceId).Select(i => i.Key).ToList()) Items.Remove(item);
+        foreach (var filter in Filters.Where(f => f.Value.SourceId == sourceId).Select(f => f.Key).ToList()) Filters.Remove(filter);
     });
 
     public Task RenameSourceAsync(Guid sourceId, string name, CancellationToken ct) => Do("source~", () => Sources[sourceId] = Sources[sourceId] with { Name = name });
     public Task UpdateSourceSettingsAsync(Guid sourceId, string settingsJson, CancellationToken ct) => Do("settings", () => Sources[sourceId] = Sources[sourceId] with { SettingsJson = settingsJson });
-    public Task<string> GetSourceSettingsAsync(Guid sourceId, CancellationToken ct) => Task.FromResult(Sources[sourceId].SettingsJson);
+    public Task<string> GetSourceSettingsAsync(Guid sourceId, CancellationToken ct) =>
+        Task.FromResult(Sources.TryGetValue(sourceId, out var s) ? s.SettingsJson : Filters[sourceId].SettingsJson);
     public Task<IReadOnlyList<SourceProperty>> GetSourcePropertiesAsync(Guid sourceId, CancellationToken ct) => Task.FromResult<IReadOnlyList<SourceProperty>>([]);
     public Task<(int Width, int Height)> GetSourceSizeAsync(Guid sourceId, CancellationToken ct) => Task.FromResult((1280, 720));
-    public Task SetGlobalAudioChannelAsync(Guid sourceId, int channel, CancellationToken ct) => Do($"channel{channel}", () => { });
+    public Task SetGlobalAudioChannelAsync(Guid sourceId, int channel, CancellationToken ct) => Do($"channel{channel}", () =>
+    {
+        if (channel == 0) Channels.Remove(sourceId); else Channels[sourceId] = channel;
+    });
+
+    public Task<IReadOnlyList<EngineTypeInfo>> ListFilterTypesAsync(CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<EngineTypeInfo>>([new("gain_filter", "Ganancia", false, true), new("color_filter_v2", "Corrección de color", true, false)]);
+    public Task<IReadOnlyList<EngineTypeInfo>> ListTransitionTypesAsync(CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<EngineTypeInfo>>([new("fade_transition", "Fundido", true, false)]);
+
+    public Task AddFilterAsync(Guid sourceId, Guid filterId, string typeId, string name, string settingsJson, CancellationToken ct) => Do($"filter+{typeId}", () =>
+    {
+        if (!Sources.ContainsKey(sourceId) && !Scenes.ContainsKey(sourceId)) throw new KeyNotFoundException("Fuente no encontrada.");
+        if (!Filters.TryAdd(filterId, (sourceId, typeId, settingsJson, true))) throw new InvalidOperationException("El filtro ya existe.");
+    });
+    public Task RemoveFilterAsync(Guid filterId, CancellationToken ct) => Do("filter-", () => { if (!Filters.Remove(filterId)) throw new KeyNotFoundException(); });
+    public Task UpdateFilterAsync(Guid filterId, string settingsJson, CancellationToken ct) => Do("filter~", () => Filters[filterId] = Filters[filterId] with { SettingsJson = settingsJson });
+    public Task SetFilterEnabledAsync(Guid filterId, bool enabled, CancellationToken ct) => Do("filter-enabled", () => Filters[filterId] = Filters[filterId] with { Enabled = enabled });
+
+    public Task PlayAnimationAsync(Guid itemId, AnimationClip clip, AnimationFlags flags, CancellationToken ct) => Do("anim", () =>
+    {
+        if (!Items.ContainsKey(itemId)) throw new KeyNotFoundException("Elemento no encontrado.");
+        if (clip.Validate() is { } error) throw new ArgumentException(error);
+        Animations[itemId] = (clip, flags);
+        if (flags.HasFlag(AnimationFlags.ShowAtStart)) Visible[itemId] = true;
+        // El motor falso termina la animación al instante.
+        if (flags.HasFlag(AnimationFlags.HideAtEnd)) Visible[itemId] = false;
+    });
+    public Task StopAnimationAsync(Guid itemId, CancellationToken ct) => Do("anim-stop", () => { });
+    public Task<bool> IsAnimationPlayingAsync(Guid itemId, CancellationToken ct) => Task.FromResult(false);
 
     public Task SetVolumeAsync(Guid sourceId, double multiplier, CancellationToken ct) => Do("volume", () => Volumes[sourceId] = multiplier);
     public Task SetMutedAsync(Guid sourceId, bool muted, CancellationToken ct) => Do("mute", () => { });
@@ -69,12 +107,15 @@ internal sealed class FakeStreamingEngine : IStreamingEngine
 
     public Task AddItemAsync(Guid sceneId, Guid itemId, Guid sourceId, CancellationToken ct) => Do("item+", () =>
     {
-        if (!Scenes.ContainsKey(sceneId) || !Sources.ContainsKey(sourceId)) throw new KeyNotFoundException("Escena o fuente no encontrada.");
+        if (!Scenes.ContainsKey(sceneId) || !(Sources.ContainsKey(sourceId) || Scenes.ContainsKey(sourceId))) throw new KeyNotFoundException("Escena o fuente no encontrada.");
+        if (sceneId == sourceId) throw new InvalidOperationException("Anidamiento circular.");
         if (!Items.TryAdd(itemId, (sceneId, sourceId))) throw new InvalidOperationException("El elemento ya existe.");
     });
 
     public Task RemoveItemAsync(Guid itemId, CancellationToken ct) => Do("item-", () => { if (!Items.Remove(itemId)) throw new KeyNotFoundException(); });
     public Task SetItemTransformAsync(Guid itemId, Transform transform, CancellationToken ct) => Do("transform", () => Transforms[itemId] = transform);
+    public Task<Transform> GetItemTransformAsync(Guid itemId, CancellationToken ct) =>
+        Task.FromResult(Transforms.TryGetValue(itemId, out var t) ? t : Transform.Identity);
     public Task SetItemVisibleAsync(Guid itemId, bool visible, CancellationToken ct) => Do("visible", () => Visible[itemId] = visible);
     public Task SetItemLockedAsync(Guid itemId, bool locked, CancellationToken ct) => Do("locked", () => { });
     public Task SetItemOrderAsync(Guid itemId, int index, CancellationToken ct) => Do("order", () => { });

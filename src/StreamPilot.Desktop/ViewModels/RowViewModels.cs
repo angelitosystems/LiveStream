@@ -10,6 +10,9 @@ public sealed partial class SceneRowViewModel(Guid id, string name) : Observable
     [ObservableProperty] private string _name = name;
     [ObservableProperty] private bool _isProgram;
     [ObservableProperty] private bool _isPreview;
+
+    /// <summary>Nombre que anuncian los lectores de pantalla para la fila.</summary>
+    public override string ToString() => IsProgram ? $"{Name} (programa)" : Name;
 }
 
 /// <summary>Elemento de la escena en edición, tal como lo muestra el panel de fuentes (arriba = capa superior).</summary>
@@ -23,6 +26,8 @@ public sealed partial class SourceRowViewModel(Guid itemId, Guid sourceId, Sourc
     [ObservableProperty] private bool _locked;
 
     public string KindLabel => SourceCatalog.Label(Kind);
+
+    public override string ToString() => $"{Name}, {KindLabel}{(Visible ? "" : ", oculta")}";
 }
 
 /// <summary>Canal del mezclador. Los niveles se actualizan ~30 veces por segundo desde el motor.</summary>
@@ -90,3 +95,22 @@ public static class SourceCatalog
 
     public static string Label(SourceKind kind) => Entries.FirstOrDefault(e => e.Kind == kind)?.Label ?? kind.ToString();
 }
+
+/// <summary>Gráfico de la capa superpuesta tal como lo muestra el panel de gráficos (arriba = capa superior).</summary>
+public sealed partial class GraphicRowViewModel(Guid id, Domain.Graphics.GraphicKind kind) : ObservableObject
+{
+    public Guid Id { get; } = id;
+    public Domain.Graphics.GraphicKind Kind { get; } = kind;
+    [ObservableProperty] private string _name = string.Empty;
+    [ObservableProperty] private bool _onAir;
+    [ObservableProperty] private string _detail = string.Empty;
+    [ObservableProperty] private bool _countdownRunning;
+
+    public string KindLabel => Application.Graphics.GraphicTemplates.DisplayName(Kind);
+    public bool IsCountdown => Kind == Domain.Graphics.GraphicKind.Countdown;
+    public bool IsScoreboard => Kind == Domain.Graphics.GraphicKind.Scoreboard;
+
+    public override string ToString() => $"{Name}{(OnAir ? ", al aire" : "")}";
+}
+
+public sealed record GraphicKindOption(Domain.Graphics.GraphicKind Kind, string Label);

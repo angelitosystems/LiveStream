@@ -14,8 +14,20 @@ public sealed record CanvasSettings(int Width = 1920, int Height = 1080, int Fps
     }
 }
 
-/// <summary>Transición usada al cambiar la escena de programa.</summary>
-public sealed record TransitionSettings(string TypeId = "fade_transition", int DurationMs = 300);
+/// <summary>
+/// Transición usada al cambiar la escena de programa. <see cref="SettingsJson"/> son los ajustes nativos del
+/// tipo (archivo y punto de corte del stinger, imagen de la cortinilla, dirección del deslizamiento...).
+/// </summary>
+public sealed record TransitionSettings(string TypeId = "fade_transition", int DurationMs = 300, string SettingsJson = "{}")
+{
+    public bool Equals(TransitionSettings? other) =>
+        other is not null && TypeId == other.TypeId && DurationMs == other.DurationMs &&
+        NormalizedJson == other.NormalizedJson;
+
+    public override int GetHashCode() => HashCode.Combine(TypeId, DurationMs, NormalizedJson);
+
+    private string NormalizedJson => string.IsNullOrWhiteSpace(SettingsJson) ? "{}" : SettingsJson.Trim();
+}
 
 public sealed record EncoderSettings(string VideoEncoderId = "auto", int VideoBitrateKbps = 6000, int AudioBitrateKbps = 160, int KeyframeIntervalSec = 2);
 

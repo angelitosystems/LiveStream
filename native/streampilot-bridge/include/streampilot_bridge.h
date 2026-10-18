@@ -35,7 +35,7 @@
 extern "C" {
 #endif
 
-#define SP_ABI_VERSION 3u
+#define SP_ABI_VERSION 4u
 
 typedef enum sp_result {
     SP_OK = 0,
@@ -171,8 +171,11 @@ SP_API sp_result SP_CALL sp_scene_remove(sp_engine *engine, const char *scene_id
 SP_API sp_result SP_CALL sp_scene_rename(sp_engine *engine, const char *scene_id, const char *name);
 /* Cambia la escena de programa con la transición configurada (corte si no hay ninguna). */
 SP_API sp_result SP_CALL sp_scene_set_program(sp_engine *engine, const char *scene_id);
-/* type_id: "cut_transition", "fade_transition", "swipe_transition", "slide_transition", ... */
-SP_API sp_result SP_CALL sp_transition_set(sp_engine *engine, const char *type_id, uint32_t duration_ms);
+/* type_id: "cut_transition", "fade_transition", "swipe_transition", "slide_transition", "wipe_transition",
+ * "fade_to_color_transition", "obs_stinger_transition". settings_json: ajustes propios del tipo (dirección, imagen
+ * luma, archivo y punto de cambio del stinger...). Puede ser NULL. */
+SP_API sp_result SP_CALL sp_transition_set(sp_engine *engine, const char *type_id, uint32_t duration_ms,
+                                           const char *settings_json);
 
 /* ---- Fuentes (compartibles entre escenas) ------------------------------------------------------ */
 /* source_type es un id de libobs ("dshow_input", "wasapi_input_capture", "monitor_capture", ...). */
@@ -181,6 +184,7 @@ SP_API sp_result SP_CALL sp_source_create(sp_engine *engine, const char *source_
 SP_API sp_result SP_CALL sp_source_remove(sp_engine *engine, const char *source_id);
 SP_API sp_result SP_CALL sp_source_rename(sp_engine *engine, const char *source_id, const char *name);
 SP_API sp_result SP_CALL sp_source_update(sp_engine *engine, const char *source_id, const char *settings_json);
+/* get_settings, get_properties y get_size aceptan también ids de escena y de filtro. */
 SP_API sp_result SP_CALL sp_source_get_settings(sp_engine *engine, const char *source_id, char *buffer,
                                                 int32_t buffer_size, int32_t *required);
 /* Describe las propiedades editables en JSON: [{name, description, type, value?, items?, min?, max?, step?}]. */
@@ -188,8 +192,9 @@ SP_API sp_result SP_CALL sp_source_get_properties(sp_engine *engine, const char 
                                                   int32_t buffer_size, int32_t *required);
 SP_API sp_result SP_CALL sp_source_get_size(sp_engine *engine, const char *source_id, uint32_t *width,
                                             uint32_t *height);
-/* Canal de salida global (1..5) para fuentes que suenan en todas las escenas, p. ej. audio de escritorio
- * y micrófono. channel 0 quita la fuente de los canales globales. */
+/* Canal de salida global. 1..5: fuentes que suenan en todas las escenas (audio de escritorio, micrófono).
+ * Canales superiores con video (fuentes o escenas) se componen por encima del programa, como un
+ * downstream keyer, y también se dibujan en los displays de escena. channel 0 la quita. */
 SP_API sp_result SP_CALL sp_source_set_output_channel(sp_engine *engine, const char *source_id, uint32_t channel);
 
 /* ---- Audio ------------------------------------------------------------------------------------ */
@@ -200,7 +205,24 @@ SP_API sp_result SP_CALL sp_audio_set_sync_offset(sp_engine *engine, const char 
 /* Últimos niveles medidos (actualizados por libobs ~cada 50 ms). Sin audio: SP_ERR_NOT_FOUND. */
 SP_API sp_result SP_CALL sp_audio_get_levels(sp_engine *engine, const char *source_id, sp_audio_levels *levels);
 
-/* ---- Elementos de escena ---------------------------------------------------------------------- */
+/* ---- Filtros (de video y de audio) ----------------------------------------------------------- */
+/* filter_type: "color_filter_v2", "scroll_filter", "noise_suppress_filter_v2", "compressor_filter",
+ * "limiter_filter", "noise_gate_filter", "gain_filter", "chroma_key_filter_v2", ... */
+SP_API sp_result SP_CALL sp_filter_add(sp_engine *engine, const char *source_id, const char *filter_id,
+                                       const char *filter_type, const char *name, const char *settings_json);
+SP_API sp_result SP_CALL sp_filter_remove(sp_engine *engine, const char *filter_id);
+SP_API sp_result SP_CALL sp_filter_update(sp_engine *engine, const char *filter_id, const char *settings_json);
+SP_API sp_result SP_CALL sp_filter_set_enabled(sp_engine *engine, const char *filter_id, int32_t enabled);
+
+/* Tipos de filtro y de transición cargados en el runtime. output_flags: 1 = video, 2 = audio. */
+typedef void(SP_CALL *sp_type_callback)(const char *type_id, const char *name, uint32_t output_flags,
+                                        void *user_data);
+SP_API sp_result SP_CALL sp_filter_types_enumerate(sp_engine *engine, sp_type_callback callback, void *user_data);
+SP_API sp_result SP_CALL sp_transition_types_enumerate(sp_engine *engine, sp_type_callback callback,
+                                                       void *user_data);
+
+/* ---- Elementos de escena ----------------------------------------------------------------------
+ * source_id puede ser el id de una fuente o el de otra escena (escena anidada, p. ej. un gráfico compuesto). */
 SP_API sp_result SP_CALL sp_item_add(sp_engine *engine, const char *scene_id, const char *item_id,
                                      const char *source_id);
 SP_API sp_result SP_CALL sp_item_remove(sp_engine *engine, const char *item_id);
@@ -210,6 +232,19 @@ SP_API sp_result SP_CALL sp_item_set_visible(sp_engine *engine, const char *item
 SP_API sp_result SP_CALL sp_item_set_locked(sp_engine *engine, const char *item_id, int32_t locked);
 /* Posición en la pila de la escena: 0 = abajo. */
 SP_API sp_result SP_CALL sp_item_set_order(sp_engine *engine, const char *item_id, int32_t index);
+
+/* ---- Animación --------------------------------------------------------------------------------
+ * Fotogramas clave evaluados en el tick del hilo gráfico de libobs (reloj del motor, no de la interfaz).
+ * clip_json: {"delay":s,"duration":s,"tracks":[{"p":"x|y|scale_x|scale_y|rotation|opacity|crop_left|crop_top|
+ *            crop_right|crop_bottom","k":[{"t":s,"v":valor,"e":"linear|in_cubic|out_cubic|in_out_cubic|
+ *            out_back|out_expo|hold"}]}]}
+ * Una animación nueva sobre el mismo elemento sustituye a la anterior. La opacidad usa un filtro de color
+ * privado sobre la fuente del elemento. */
+#define SP_ANIM_SHOW_AT_START 1
+#define SP_ANIM_HIDE_AT_END 2
+SP_API sp_result SP_CALL sp_anim_play(sp_engine *engine, const char *item_id, const char *clip_json, int32_t flags);
+SP_API sp_result SP_CALL sp_anim_stop(sp_engine *engine, const char *item_id);
+SP_API sp_result SP_CALL sp_anim_is_playing(sp_engine *engine, const char *item_id, int32_t *playing);
 
 /* ---- Salidas ---------------------------------------------------------------------------------- */
 SP_API sp_result SP_CALL sp_recording_start(sp_engine *engine, const sp_recording_config *config);

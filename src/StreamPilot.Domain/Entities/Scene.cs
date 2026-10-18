@@ -9,6 +9,9 @@ public sealed class Scene(Guid id, string name)
     public Guid Id { get; } = id;
     public string Name { get; private set; } = !string.IsNullOrWhiteSpace(name) ? name : throw new ArgumentException("Nombre vacío.", nameof(name));
 
+    /// <summary>Transición para entrar en esta escena; null = la transición general del proyecto.</summary>
+    public TransitionSettings? TransitionOverride { get; set; }
+
     /// <summary>Elementos ordenados de abajo (índice 0) hacia arriba.</summary>
     public IReadOnlyList<SceneItem> Items => _items;
 

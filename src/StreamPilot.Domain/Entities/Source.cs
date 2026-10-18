@@ -58,6 +58,30 @@ public sealed class Source
 
     public bool IsAudioOnly => Kind is SourceKind.AudioInput or SourceKind.AudioOutput;
 
+    private readonly List<SourceFilter> _filters = [];
+
+    /// <summary>Filtros en orden de aplicación.</summary>
+    public IReadOnlyList<SourceFilter> Filters => _filters;
+
+    public SourceFilter GetFilter(Guid filterId) =>
+        _filters.FirstOrDefault(f => f.Id == filterId) ?? throw new KeyNotFoundException($"Filtro {filterId} no encontrado.");
+
+    public void InsertFilter(SourceFilter filter, int index)
+    {
+        if (_filters.Any(f => f.Id == filter.Id))
+            throw new InvalidOperationException("El filtro ya existe.");
+        _filters.Insert(Math.Clamp(index, 0, _filters.Count), filter);
+    }
+
+    public SourceFilter RemoveFilter(Guid filterId)
+    {
+        var filter = GetFilter(filterId);
+        _filters.Remove(filter);
+        return filter;
+    }
+
+    public int IndexOfFilter(Guid filterId) => _filters.FindIndex(f => f.Id == filterId);
+
     public void Rename(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
