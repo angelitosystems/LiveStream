@@ -32,8 +32,9 @@ public sealed class App : Avalonia.Application
             var repository = new JsonProjectRepository();
             var (project, path, warning) = LoadProject(repository, desktop.Args ?? []);
             _engine = new LibObsEngine();
-            var session = new StudioSession(_engine, repository, new DpapiSecretStore(), project, path);
-            _vm = new MainViewModel(session, _engine, new DialogService()) { StatusMessage = warning ?? $"Proyecto: {path}" };
+            var secrets = new DpapiSecretStore();
+            var session = new StudioSession(_engine, repository, secrets, project, path);
+            _vm = new MainViewModel(session, _engine, new DialogService(), secrets) { StatusMessage = warning ?? $"Proyecto: {path}" };
             desktop.MainWindow = new MainWindow { DataContext = _vm };
 
             // Bloquea a propósito: el proyecto se guarda y libobs se apaga antes de que termine el proceso.

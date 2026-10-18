@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StreamPilot.Application.Abstractions;
+using StreamPilot.Application.Assistant;
 using StreamPilot.Application.Audio;
 using StreamPilot.Application.Commands;
 using StreamPilot.Application.Graphics;
@@ -23,7 +24,7 @@ namespace StreamPilot.Desktop.ViewModels;
 /// Estado del estudio para la UI. Toda mutación pasa por <see cref="CommandExecutor"/>; la UI se reconstruye desde
 /// el proyecto cuando el ejecutor avisa de un cambio, así deshacer/rehacer y el asistente quedan reflejados igual.
 /// </summary>
-public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
+public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, IOutputController
 {
     private readonly DispatcherTimer _metricsTimer;
     private readonly DispatcherTimer _meterTimer;
@@ -35,11 +36,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _refreshing;
     private bool _metersBusy;
 
-    public MainViewModel(StudioSession session, LibObsEngine engine, DialogService dialogs)
+    public MainViewModel(StudioSession session, LibObsEngine engine, DialogService dialogs, ISecretStore secrets)
     {
         Session = session;
         Engine = engine;
         Dialogs = dialogs;
+        Assistant = new AssistantViewModel(this, secrets);
         Executor.StateChanged += (_, _) => Dispatcher.UIThread.Post(Refresh);
         Session.AutosaveFailed += (_, ex) => Dispatcher.UIThread.Post(() => StatusMessage = $"No se pudo guardar: {ex.Message}");
         Session.Saved += (_, _) => Dispatcher.UIThread.Post(() => LastSaved = DateTime.Now.ToString("HH:mm:ss"));
@@ -54,6 +56,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public StudioSession Session { get; }
     public LibObsEngine Engine { get; }
     public DialogService Dialogs { get; }
+
+    /// <summary>Panel del asistente de IA.</summary>
+    public AssistantViewModel Assistant { get; }
     public CommandExecutor Executor => Session.Executor;
     public StudioProject Project => Session.Project;
 
@@ -715,29 +720,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (IsStreaming)
             {
-                if (!await Dialogs.ConfirmAsync("Detener transmisión", "¿Detener la transmisión en directo?", "Detener", destructive: true))
-                    return;
-                StatusMessage = "Deteniendo transmisión…";
-                await Engine.StopStreamAsync(CancellationToken.None);
-                StatusMessage = "Transmisión detenida.";
+                if (await Dialogs.ConfirmAsync("Detener transmisión", "¿Detener la transmisión en directo?", "Detener", destructive: true))
+                    await StopStreamAsync(CancellationToken.None);
                 return;
             }
-
             if (await Session.ValidateStreamAsync() is { } problem)
             {
                 await Dialogs.InfoAsync("Transmisión", problem);
                 return;
             }
-            if (!await Dialogs.ConfirmAsync("Iniciar transmisión", $"Se emitirá en directo a {MaskServer(Project.Stream.Server)}. ¿Continuar?", "Transmitir"))
-                return;
-            StatusMessage = "Conectando…";
-            await Session.StartStreamAsync();
-            _streamClock.Restart();
-            _lastStreamBytes = 0;
-            _lastStreamSample = DateTime.UtcNow;
-            _wasStreaming = true;
-            IsStreaming = true;
-            StatusMessage = "Transmisión iniciada.";
+            if (await Dialogs.ConfirmAsync("Iniciar transmisión", $"Se emitirá en directo a {MaskServer(Project.Stream.Server)}. ¿Continuar?", "Transmitir"))
+                await StartStreamAsync(CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -755,11 +748,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (IsRecording)
             {
-                StatusMessage = "Finalizando grabación…";
-                await Engine.StopRecordingAsync(CancellationToken.None);
-                IsRecording = false;
-                _recordClock.Reset();
-                StatusMessage = $"Grabación guardada: {LastRecordingPath}";
+                await StopRecordingAsync(CancellationToken.None);
                 return;
             }
             var folder = Path.GetDirectoryName(Session.NextRecordingPath(DateTime.Now))!;
@@ -768,16 +757,67 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (free < 2L * 1024 * 1024 * 1024 &&
                 !await Dialogs.ConfirmAsync("Poco espacio", $"Quedan {free / 1048576} MB libres en la unidad de grabación. ¿Grabar igualmente?", "Grabar"))
                 return;
-            LastRecordingPath = await Session.StartRecordingAsync();
-            _recordClock.Restart();
-            IsRecording = true;
-            StatusMessage = $"Grabando en {LastRecordingPath}";
+            await StartRecordingAsync(CancellationToken.None);
         }
         catch (Exception ex)
         {
             StatusMessage = $"Grabación: {ex.Message}";
             await Dialogs.InfoAsync("Grabación", ex.Message);
         }
+    }
+
+    // IOutputController: el mismo camino para los botones y para el asistente (que confirma por su cuenta).
+    // Puede llamarse desde otro hilo: el estado de la UI se actualiza en el hilo de UI.
+
+    public async Task StartStreamAsync(CancellationToken ct)
+    {
+        if (!EngineReady)
+            throw new InvalidOperationException("El motor no está iniciado.");
+        await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = "Conectando…");
+        await Session.StartStreamAsync(ct);
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _streamClock.Restart();
+            _lastStreamBytes = 0;
+            _lastStreamSample = DateTime.UtcNow;
+            _wasStreaming = true;
+            IsStreaming = true;
+            StatusMessage = "Transmisión iniciada.";
+        });
+    }
+
+    public async Task StopStreamAsync(CancellationToken ct)
+    {
+        await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = "Deteniendo transmisión…");
+        await Engine.StopStreamAsync(ct);
+        await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = "Transmisión detenida.");
+    }
+
+    public async Task<string> StartRecordingAsync(CancellationToken ct)
+    {
+        if (!EngineReady)
+            throw new InvalidOperationException("El motor no está iniciado.");
+        var path = await Session.StartRecordingAsync(ct);
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            LastRecordingPath = path;
+            _recordClock.Restart();
+            IsRecording = true;
+            StatusMessage = $"Grabando en {path}";
+        });
+        return path;
+    }
+
+    public async Task StopRecordingAsync(CancellationToken ct)
+    {
+        await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = "Finalizando grabación…");
+        await Engine.StopRecordingAsync(ct);
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            IsRecording = false;
+            _recordClock.Reset();
+            StatusMessage = $"Grabación guardada: {LastRecordingPath}";
+        });
     }
 
     private static string MaskServer(string server) => server.Length > 60 ? server[..60] + "…" : server;
@@ -902,6 +942,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Assistant.Cancel();
         _metricsTimer.Stop();
         _meterTimer.Stop();
         await Session.DisposeAsync();

@@ -40,6 +40,13 @@ public sealed partial class MainWindow : Window
         };
         new ProgramDisplayController(vm).Attach(Program);
         vm.StudioModeChanged += (_, _) => ApplyStudioLayout(vm.StudioMode);
+        vm.Assistant.MessageAdded += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => ChatScroll.ScrollToEnd(),
+            Avalonia.Threading.DispatcherPriority.Background);
+        vm.Assistant.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AssistantViewModel.IsOpen) && vm.Assistant.IsOpen)
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => AssistantInput.Focus(), Avalonia.Threading.DispatcherPriority.Background);
+        };
         vm.TransitionNeedsSettings += async (_, type) =>
             await Guard("Transición", () => ProductionDialogs.ShowTransitionSettingsAsync(vm, null, type));
         ApplyStudioLayout(vm.StudioMode);
@@ -63,6 +70,7 @@ public sealed partial class MainWindow : Window
         e.Handled = true;
         switch (e.Key)
         {
+            case Key.Space when ctrl: Vm.Assistant.IsOpen = !Vm.Assistant.IsOpen; break;
             case Key.Z when ctrl: await Vm.UndoCommand.ExecuteAsync(null); break;
             case Key.Y when ctrl: await Vm.RedoCommand.ExecuteAsync(null); break;
             case Key.S when ctrl: await Vm.SaveProjectCommand.ExecuteAsync(null); break;

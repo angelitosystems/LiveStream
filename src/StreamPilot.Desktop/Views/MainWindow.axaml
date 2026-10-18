@@ -118,6 +118,13 @@
             <TextBlock Text="Estudio" FontSize="9" HorizontalAlignment="Center" />
           </StackPanel>
         </Button>
+        <ToggleButton Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" IsChecked="{Binding Assistant.IsOpen}"
+                      AutomationProperties.Name="Asistente de IA" ToolTip.Tip="Asistente de IA (Ctrl+Espacio)">
+          <StackPanel Spacing="2">
+            <PathIcon Data="{StaticResource Icon.Assistant}" Width="18" Height="18" />
+            <TextBlock Text="Asistente" FontSize="9" HorizontalAlignment="Center" />
+          </StackPanel>
+        </ToggleButton>
         <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Ajustes de salida y video" ToolTip.Tip="Ajustes de salida y video" Click="OnSettings">
           <StackPanel Spacing="2">
             <PathIcon Data="{StaticResource Icon.Gear}" Width="18" Height="18" />
@@ -125,6 +132,107 @@
           </StackPanel>
         </Button>
       </StackPanel>
+    </Border>
+
+    <!-- ===== Asistente de IA ===== -->
+    <Border DockPanel.Dock="Right" Width="340" IsVisible="{Binding Assistant.IsOpen}" Background="{StaticResource Sp.Bg1Brush}"
+            BorderBrush="{StaticResource Sp.LineBrush}" BorderThickness="1,0,0,0">
+      <DockPanel x:DataType="vm:AssistantViewModel" DataContext="{Binding Assistant}">
+        <Border DockPanel.Dock="Top" Classes="panelHeader">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <Button Classes="icon" Command="{Binding NewConversationCommand}" AutomationProperties.Name="Nueva conversación" ToolTip.Tip="Nueva conversación">
+                <PathIcon Data="{StaticResource Icon.Plus}" />
+              </Button>
+              <Button Classes="icon" Command="{Binding ToggleCommand}" AutomationProperties.Name="Cerrar el asistente" ToolTip.Tip="Cerrar">
+                <PathIcon Data="{StaticResource Icon.Close}" />
+              </Button>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Classes="panelTitle" Text="Asistente" />
+              <TextBlock Classes="muted" FontSize="11" Text="{Binding ModelName}" VerticalAlignment="Center" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+
+        <!-- Configuración de la clave -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="12" Spacing="8" IsVisible="{Binding !HasApiKey}">
+          <TextBlock TextWrapping="Wrap" Text="El asistente usa la API de Claude (Anthropic). Pega tu clave de API; se guarda cifrada para tu usuario de Windows y no sale de este equipo salvo hacia la API." />
+          <TextBox Text="{Binding ApiKeyInput}" PasswordChar="•" Watermark="sk-ant-…" AutomationProperties.Name="Clave de API de Anthropic" />
+          <Button Classes="primary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Content="Guardar clave" Command="{Binding SaveApiKeyCommand}" />
+          <TextBlock Classes="muted" FontSize="11" TextWrapping="Wrap" Text="Se crea en console.anthropic.com → API keys. El uso se factura en tu cuenta de Anthropic." />
+        </StackPanel>
+
+        <!-- Entrada -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="10" Spacing="6" IsVisible="{Binding HasApiKey}">
+          <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3" MinHeight="3" />
+          <DockPanel>
+            <Panel DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Bottom">
+              <Button Classes="primary" Width="40" Height="36" Command="{Binding SendCommand}" IsVisible="{Binding !IsBusy}"
+                      AutomationProperties.Name="Enviar al asistente" ToolTip.Tip="Enviar (Intro)">
+                <PathIcon Data="{StaticResource Icon.Send}" Width="14" Height="14" />
+              </Button>
+              <Button Classes="live" Width="40" Height="36" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}"
+                      AutomationProperties.Name="Detener al asistente" ToolTip.Tip="Detener">
+                <PathIcon Data="{StaticResource Icon.Stop}" Width="12" Height="12" />
+              </Button>
+            </Panel>
+            <TextBox x:Name="AssistantInput" Text="{Binding Input}" TextWrapping="Wrap" MaxHeight="120" AcceptsReturn="False"
+                     Watermark="Pide algo: «crea una escena de entrevista con cámara y rótulo»…" AutomationProperties.Name="Mensaje para el asistente">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+          </DockPanel>
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Padding="6,0" Height="20" MinWidth="0" FontSize="10" Content="Quitar clave" Command="{Binding RemoveApiKeyCommand}"
+                    IsVisible="{Binding HasStoredKey}" AutomationProperties.Name="Quitar la clave de API" />
+            <TextBlock Classes="muted" FontSize="10" Text="{Binding KeySource}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </DockPanel>
+        </StackPanel>
+
+        <!-- Conversación -->
+        <Panel>
+          <StackPanel Margin="16" Spacing="8" IsVisible="{Binding !Messages.Count}">
+            <TextBlock TextWrapping="Wrap" Text="Opero el estudio por ti: escenas, fuentes, audio, transiciones, gráficos, grabación y emisión. Cada cambio se puede deshacer, y para emitir o borrar te pediré confirmación." />
+            <TextBlock Classes="muted" FontSize="11" Text="Prueba con:" Margin="0,6,0,0" />
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding SuggestCommand}"
+                    CommandParameter="Crea una escena «Entrevista» con la cámara ajustada a pantalla y un rótulo con mi nombre."
+                    Content="Escena de entrevista con cámara y rótulo" IsEnabled="{Binding HasApiKey}" />
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding SuggestCommand}"
+                    CommandParameter="Pon supresión de ruido y un compresor al micrófono."
+                    Content="Limpiar el audio del micrófono" IsEnabled="{Binding HasApiKey}" />
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding SuggestCommand}"
+                    CommandParameter="Prepara una cuenta atrás de 5 minutos con el texto «EMPEZAMOS EN», lánzala y ponla en marcha."
+                    Content="Cuenta atrás de inicio de directo" IsEnabled="{Binding HasApiKey}" />
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding SuggestCommand}"
+                    CommandParameter="¿Qué hay ahora mismo en el estudio?"
+                    Content="Resumen del estudio" IsEnabled="{Binding HasApiKey}" />
+          </StackPanel>
+          <ScrollViewer x:Name="ChatScroll" IsVisible="{Binding Messages.Count}">
+            <ItemsControl ItemsSource="{Binding Messages}" Margin="10,8">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChatEntry">
+                  <Panel Margin="0,4">
+                    <Border IsVisible="{Binding IsUser}" HorizontalAlignment="Right" MaxWidth="300" CornerRadius="8" Padding="10,6"
+                            Background="{StaticResource Sp.AccentBrush}">
+                      <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="White" />
+                    </Border>
+                    <Border IsVisible="{Binding IsAssistant}" HorizontalAlignment="Left" MaxWidth="330" CornerRadius="8" Padding="10,6"
+                            Background="{StaticResource Sp.Bg3Brush}">
+                      <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                    </Border>
+                    <SelectableTextBlock IsVisible="{Binding IsAction}" Text="{Binding Text}" TextWrapping="Wrap" FontSize="11"
+                                         Foreground="{StaticResource Sp.TextMutedBrush}" Margin="6,0" />
+                    <SelectableTextBlock IsVisible="{Binding IsError}" Text="{Binding Text}" TextWrapping="Wrap" FontSize="11"
+                                         Foreground="{StaticResource Sp.LiveBrush}" Margin="6,0" />
+                  </Panel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Panel>
+      </DockPanel>
     </Border>
 
     <!-- ===== Área de trabajo ===== -->

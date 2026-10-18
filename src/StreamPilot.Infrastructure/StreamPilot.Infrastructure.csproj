@@ -3,6 +3,7 @@
     <ProjectReference Include="..\StreamPilot.Application\StreamPilot.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Anthropic" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>
   <ItemGroup>

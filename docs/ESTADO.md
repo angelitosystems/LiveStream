@@ -1,6 +1,6 @@
 # Estado real del proyecto
 
-Actualizado al cierre de la **Fase 3 — Producción televisiva**. Solo se marca como hecho lo verificado contra libobs real
+Actualizado al cierre de la **Fase 4 — Asistente IA**. Solo se marca como hecho lo verificado contra libobs real
 en esta máquina (i7-13650HX, Intel UHD + RTX 4050 Laptop, Windows 11, pantalla al 125 %).
 
 ## Fase 1 — Motor (completada)
@@ -59,6 +59,23 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 4. **Nombres accesibles**: las listas anunciaban `StreamPilot.Desktop.ViewModels.…` y los botones de control
    `Avalonia.Controls.Panel`.
 
+## Fase 4 — Asistente IA (completada, con las limitaciones de abajo)
+
+| Área | Implementado | Verificación |
+|---|---|---|
+| Herramientas tipadas | 29 herramientas en `AssistantToolbox`: estado del estudio y dispositivos; escenas (crear, renombrar, duplicar, borrar, poner en programa); fuentes (añadir cámara/micro/audio/pantalla/ventana/juego/texto/color, quitar, mostrar/ocultar, mover/escalar/girar, ajustar al lienzo, capas, texto); audio (volumen, silencio, filtros); transición; gráficos (crear con campos, actualizar en vivo, lanzar, retirar, borrar, cuenta atrás); grabación, emisión y deshacer | 7 pruebas unitarias sobre el estudio real con motor falso |
+| Seguridad | Esquemas estrictos (`strict`, `additionalProperties: false`) y validación propia de cada argumento antes de ejecutar; todo pasa por `CommandExecutor` (deshacer). Emitir, detener la emisión y borrar piden confirmación con un diálogo de la app; un rechazo se comunica al modelo para que no insista. El modelo no puede elegir archivos ni rutas, ni ve el servidor/clave de emisión, ni accede al motor | Pruebas: argumentos inválidos y herramientas inexistentes no cambian nada; el estado enviado no contiene destino ni clave; registro de las peticiones reales sin secretos |
+| Modelo | Claude Opus 5.5 (`claude-opus-5-5`) con el SDK oficial de C# (`Anthropic` 12.58.0), esfuerzo medio, bucle manual de herramientas, historial solo por el final (los bloques de razonamiento se devuelven intactos). **Fallback del servidor activado** (`fallbacks: "default"`): si un clasificador rechaza la petición, la API la reintenta con otro modelo adecuado. Errores de la API traducidos a mensajes claros; un turno fallido o cancelado se retira del historial | 4 pruebas de protocolo con respuestas grabadas (cuerpo y cabeceras de cada petición) |
+| Clave de API | Cifrada con DPAPI para el usuario de Windows, o tomada de `ANTHROPIC_API_KEY`; nunca se muestra ni se registra | Prueba manual en la app |
+| Interfaz | Panel lateral (botón «Asistente» o Ctrl+Espacio): chat con la lista de acciones ejecutadas (✓/✗), sugerencias, cancelar, nueva conversación, configuración de la clave | App real contra un servidor local que imita la API: el asistente creó escena, fondo y rótulo, puso la escena en programa, lanzó el gráfico y respetó la negativa a borrar una escena |
+
+### Fallos encontrados y corregidos en la Fase 4
+
+1. **Nombres con acentos**: «micro» no encontraba «Micrófono». La búsqueda ignora ahora mayúsculas y acentos.
+2. **JSON con acentos escapados** (`\u00F3`) en el estado enviado al modelo: ahora sale legible.
+3. **Grabar/emitir** tenían su lógica dentro de los botones; ahora botones y asistente comparten el mismo camino
+   (`IOutputController`), con las confirmaciones en cada llamador.
+
 ## Limitaciones conocidas (reales, no simuladas)
 
 - **Paneles acoplables**: son redimensionables y se pueden restaurar, pero no se pueden arrastrar a otra posición ni
@@ -78,6 +95,12 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 - **Editor de gráficos**: los gráficos se editan con formulario (campos, colores, posición numérica), no arrastrándolos
   sobre el lienzo; las plantillas son las 8 del estudio (no hay editor de diseño libre ni línea de tiempo de keyframes
   en la UI, aunque el motor sí la soporta).
+- **Asistente sin probar contra la API real**: en este equipo no hay clave de Anthropic. El protocolo está verificado
+  con respuestas grabadas y un servidor local, pero la calidad de las respuestas del modelo real no se ha medido
+  (no hay conjunto de evaluación todavía). Cada mensaje consume tokens de la cuenta del usuario.
+- **Asistente**: no ve la imagen del programa ni puede usar archivos (imágenes, videos, stingers); las respuestas no se
+  muestran en streaming (aparecen al terminar cada paso); el historial no se compacta (conversaciones muy largas
+  deben reiniciarse con «Nueva conversación»).
 - **Animaciones**: las salidas automáticas y la cuenta atrás se comprueban cada 200 ms en .NET; la animación en sí corre
   en el reloj del motor.
 - **Lienzo y proyecto**: cambiarlos reinicia la aplicación, porque libobs no se puede reiniciar dentro del proceso.
@@ -88,7 +111,7 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 
 ## Pendiente
 
-- **Fases 4–7** — Asistente IA, optimización, multistream, calidad y distribución.
+- **Fases 5–7** — Optimización, multistream, calidad y distribución.
 
 ## Cómo ejecutar y verificar
 
@@ -99,4 +122,5 @@ dotnet test StreamPilot.sln         # unitarias + integración contra libobs rea
 dotnet run --project src/StreamPilot.Desktop -- --project ruta\al\proyecto.spproj
 ./scripts/ui-drag-test.ps1 -ProcessId <pid> -ProjectPath <proyecto> -ItemName <fuente>   # prueba del editor
 ./scripts/ui-invoke.ps1 -ProcessId <pid> -Name "Añadir gráfico"   # pulsa un control por su nombre accesible (-List los muestra)
+# Asistente: clave en el panel (se guarda cifrada) o variable ANTHROPIC_API_KEY
 ```

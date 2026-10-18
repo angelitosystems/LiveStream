@@ -4,6 +4,7 @@
     <PackageVersion Include="Avalonia.Desktop" Version="11.3.22" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.22" />
     <PackageVersion Include="Avalonia.Controls.ColorPicker" Version="11.3.22" />
+    <PackageVersion Include="Anthropic" Version="12.58.0" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
