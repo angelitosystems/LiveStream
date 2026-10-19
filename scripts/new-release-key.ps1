@@ -3,16 +3,16 @@
   Crea el par de claves de publicación de actualizaciones (ECDSA P-256).
   - La clave PRIVADA se guarda fuera del repositorio (por defecto en tu perfil) y firma los manifiestos. Guárdala con
     copia de seguridad: si se pierde, las versiones instaladas no aceptarán actualizaciones firmadas con otra clave.
-  - La clave PÚBLICA se escribe en src/StreamPilot.Infrastructure/Updates/release-public-key.pem y se compila en la app.
+  - La clave PÚBLICA se escribe en src/LiveStream.Infrastructure/Updates/release-public-key.pem y se compila en la app.
   No sobrescribe una clave existente salvo con -Force.
 #>
 param(
-    [string] $PrivateKeyPath = (Join-Path $env:USERPROFILE '.streampilot-release\release-private-key.pem'),
+    [string] $PrivateKeyPath = (Join-Path $env:USERPROFILE '.livestream-release\release-private-key.pem'),
     [switch] $Force
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$publicPath = Join-Path $root 'src/StreamPilot.Infrastructure/Updates/release-public-key.pem'
+$publicPath = Join-Path $root 'src/LiveStream.Infrastructure/Updates/release-public-key.pem'
 if (((Test-Path $PrivateKeyPath) -or (Test-Path $publicPath)) -and -not $Force) {
     throw "Ya existe una clave ($PrivateKeyPath o $publicPath). Usa -Force solo si de verdad quieres sustituirla."
 }

@@ -16,7 +16,7 @@ if (-not $Url.StartsWith('https://')) { throw 'La URL de descarga debe ser HTTPS
 $file = Get-Item $Installer
 $sha = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 # Mismo texto canónico que UpdateManifest.SignedText.
-$signed = "streampilot-update-v1`n$Version`n$Url`n$($file.Length)`n$sha"
+$signed = "livestream-update-v1`n$Version`n$Url`n$($file.Length)`n$sha"
 $key = [System.Security.Cryptography.ECDsa]::Create()
 $key.ImportFromPem((Get-Content $PrivateKey -Raw))
 $signature = [Convert]::ToBase64String($key.SignData([Text.Encoding]::UTF8.GetBytes($signed), [System.Security.Cryptography.HashAlgorithmName]::SHA256))

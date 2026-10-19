@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\LiveStream.Domain\LiveStream.Domain.csproj" />
+  </ItemGroup>
+</Project>

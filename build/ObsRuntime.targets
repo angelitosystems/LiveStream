@@ -1,10 +1,10 @@
 <Project>
-  <!-- Copia el runtime de libobs + streampilot_bridge (producido por scripts/build-native.ps1) junto al ejecutable,
+  <!-- Copia el runtime de libobs + livestream_bridge (producido por scripts/build-native.ps1) junto al ejecutable,
        conservando la estructura obs-plugins/64bit y data/. Opcional mientras el runtime no exista. -->
   <PropertyGroup>
     <ObsRuntimeDir>$(MSBuildThisFileDirectory)..\artifacts\obs-runtime\</ObsRuntimeDir>
   </PropertyGroup>
-  <ItemGroup Condition="Exists('$(ObsRuntimeDir)streampilot_bridge.dll')">
+  <ItemGroup Condition="Exists('$(ObsRuntimeDir)livestream_bridge.dll')">
     <None Include="$(ObsRuntimeDir)**\*"
           Link="%(RecursiveDir)%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"

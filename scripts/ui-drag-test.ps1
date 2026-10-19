@@ -36,7 +36,7 @@ public static class SpUi {
             var sb = new StringBuilder(64); GetClassName(h, sb, 64);
             RECT r; GetClientRect(h, out r);
             int area = (r.Right - r.Left) * (r.Bottom - r.Top);
-            if (sb.ToString() == "StreamPilotPreview" && IsWindowVisible(h) && area > bestArea) { found = h; bestArea = area; }
+            if (sb.ToString() == "LiveStreamPreview" && IsWindowVisible(h) && area > bestArea) { found = h; bestArea = area; }
             return true; }, IntPtr.Zero);
         return found;
     }

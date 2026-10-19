@@ -10,8 +10,8 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- Versión del producto: la usan el instalador, «Aplicaciones instaladas» y las actualizaciones. -->
     <Version>0.7.0</Version>
-    <Product>StreamPilot</Product>
-    <Company>StreamPilot</Company>
+    <Product>LiveStream</Product>
+    <Company>LiveStream</Company>
   </PropertyGroup>
   <ItemGroup>
     <!-- Plataforma objetivo: Windows x64 (libobs + D3D11 + DPAPI). -->

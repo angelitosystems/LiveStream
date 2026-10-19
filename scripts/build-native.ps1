@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Prepara el runtime de libobs y compila streampilot_bridge en artifacts/obs-runtime.
+  Prepara el runtime de libobs y compila livestream_bridge en artifacts/obs-runtime.
 
 .DESCRIPTION
   -Mode Prebuilt (por defecto, desarrollo): usa los binarios de una instalación de OBS Studio de la
@@ -19,7 +19,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-# Plugins del motor que usa StreamPilot. Se excluyen a propósito los que dependen de la interfaz Qt de OBS
+# Plugins del motor que usa LiveStream. Se excluyen a propósito los que dependen de la interfaz Qt de OBS
 # (frontend-tools, obs-websocket, obs-vst, decklink-*-ui, aja-output-ui): sin esa interfaz cuelgan el proceso.
 # obs-browser (CEF) queda fuera hasta implementar las fuentes de navegador con su subproceso.
 $EnginePlugins = @(
@@ -31,7 +31,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $third = Join-Path $root 'third_party'
 $obsSrc = Join-Path $third 'obs-studio'
 $runtime = Join-Path $root 'artifacts/obs-runtime'
-$bridgeSrc = Join-Path $root 'native/streampilot-bridge'
+$bridgeSrc = Join-Path $root 'native/livestream-bridge'
 $bridgeBuild = Join-Path $bridgeSrc 'build'
 
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -108,6 +108,6 @@ else {
     throw 'Modo Source: falta definir la copia del runtime una vez validado el build de OBS desde fuente.'
 }
 
-Copy-Item -Force (Join-Path $bridgeBuild "$Config\streampilot_bridge.dll") $runtime
-Copy-Item -Force (Join-Path $bridgeBuild "$Config\streampilot_bridge.pdb") $runtime -ErrorAction SilentlyContinue
+Copy-Item -Force (Join-Path $bridgeBuild "$Config\livestream_bridge.dll") $runtime
+Copy-Item -Force (Join-Path $bridgeBuild "$Config\livestream_bridge.pdb") $runtime -ErrorAction SilentlyContinue
 Write-Host "Runtime listo en $runtime"

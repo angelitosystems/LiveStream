@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Pulsa un control de StreamPilot por su nombre accesible (UI Automation), sin mover el ratón.
+  Pulsa un control de LiveStream por su nombre accesible (UI Automation), sin mover el ratón.
   Sirve para verificar la interfaz de forma reproducible. Busca en todas las ventanas del proceso
   (principal, diálogos y menús emergentes).
 .PARAMETER Name

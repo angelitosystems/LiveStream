@@ -1,0 +1,193 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Tema central de LiveStream. Todos los paneles usan estas clases; no se definen colores sueltos en las vistas.
+    Paleta: fondos grafito escalonados, acento azul, rojo para "en directo" y ámbar para grabación.
+  -->
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://LiveStream.Desktop/Themes/Icons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+
+      <Color x:Key="Sp.Bg0">#FF111215</Color>
+      <Color x:Key="Sp.Bg1">#FF17191D</Color>
+      <Color x:Key="Sp.Bg2">#FF1E2126</Color>
+      <Color x:Key="Sp.Bg3">#FF272B31</Color>
+      <Color x:Key="Sp.Line">#FF2F343B</Color>
+      <Color x:Key="Sp.Text">#FFE6E8EB</Color>
+      <Color x:Key="Sp.TextMuted">#FF9AA1AB</Color>
+      <Color x:Key="Sp.Accent">#FF3D8BFF</Color>
+      <Color x:Key="Sp.AccentHover">#FF5C9DFF</Color>
+      <Color x:Key="Sp.Live">#FFE5484D</Color>
+      <Color x:Key="Sp.Rec">#FFF5A524</Color>
+      <Color x:Key="Sp.Ok">#FF30A46C</Color>
+
+      <SolidColorBrush x:Key="Sp.Bg0Brush" Color="{StaticResource Sp.Bg0}" />
+      <SolidColorBrush x:Key="Sp.Bg1Brush" Color="{StaticResource Sp.Bg1}" />
+      <SolidColorBrush x:Key="Sp.Bg2Brush" Color="{StaticResource Sp.Bg2}" />
+      <SolidColorBrush x:Key="Sp.Bg3Brush" Color="{StaticResource Sp.Bg3}" />
+      <SolidColorBrush x:Key="Sp.LineBrush" Color="{StaticResource Sp.Line}" />
+      <SolidColorBrush x:Key="Sp.TextBrush" Color="{StaticResource Sp.Text}" />
+      <SolidColorBrush x:Key="Sp.TextMutedBrush" Color="{StaticResource Sp.TextMuted}" />
+      <SolidColorBrush x:Key="Sp.AccentBrush" Color="{StaticResource Sp.Accent}" />
+      <SolidColorBrush x:Key="Sp.LiveBrush" Color="{StaticResource Sp.Live}" />
+      <SolidColorBrush x:Key="Sp.RecBrush" Color="{StaticResource Sp.Rec}" />
+      <SolidColorBrush x:Key="Sp.OkBrush" Color="{StaticResource Sp.Ok}" />
+
+      <!-- Sobrescribe el acento de Fluent para que los controles estándar usen la misma paleta. -->
+      <Color x:Key="SystemAccentColor">#FF3D8BFF</Color>
+      <Color x:Key="SystemAccentColorLight1">#FF5C9DFF</Color>
+      <Color x:Key="SystemAccentColorDark1">#FF2F72D6</Color>
+      <FontFamily x:Key="Sp.Mono">Cascadia Mono, Consolas, monospace</FontFamily>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{StaticResource Sp.Bg0Brush}" />
+    <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI, Inter, sans-serif" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <!-- Paneles acoplados -->
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="{StaticResource Sp.Bg1Brush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Sp.LineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+  <Style Selector="Border.panelHeader">
+    <Setter Property="Background" Value="{StaticResource Sp.Bg2Brush}" />
+    <Setter Property="CornerRadius" Value="6,6,0,0" />
+    <Setter Property="Padding" Value="10,0,4,0" />
+    <Setter Property="Height" Value="32" />
+  </Style>
+  <Style Selector="TextBlock.panelTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{StaticResource Sp.TextBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{StaticResource Sp.TextMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.section">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Margin" Value="0,12,0,6" />
+  </Style>
+
+  <!-- Botones de icono en cabeceras y barras -->
+  <Style Selector="Button.icon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="6" />
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+  <Style Selector="Button.icon:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Sp.Bg3Brush}" />
+  </Style>
+  <Style Selector="Button.icon PathIcon, ToggleButton.icon PathIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+  </Style>
+  <Style Selector="ToggleButton.icon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="6" />
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <!-- Botones de control de salida -->
+  <Style Selector="Button.control">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="Background" Value="{StaticResource Sp.Bg3Brush}" />
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{StaticResource Sp.AccentBrush}" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="Button.live">
+    <Setter Property="Background" Value="{StaticResource Sp.LiveBrush}" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="Button.rec">
+    <Setter Property="Background" Value="{StaticResource Sp.RecBrush}" />
+    <Setter Property="Foreground" Value="#FF1A1300" />
+  </Style>
+
+  <!-- Botón AIRE de los gráficos: rojo mientras el gráfico está sobre el programa -->
+  <Style Selector="ToggleButton.air">
+    <Setter Property="Height" Value="24" />
+    <Setter Property="MinWidth" Value="46" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="Background" Value="{StaticResource Sp.Bg3Brush}" />
+  </Style>
+  <Style Selector="ToggleButton.air:checked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Sp.LiveBrush}" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="ToggleButton.air:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#FFF0595E" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+
+  <!-- Indicadores de estado (LIVE / REC) -->
+  <Style Selector="Border.chip">
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="8,2" />
+    <Setter Property="Background" Value="{StaticResource Sp.Bg3Brush}" />
+  </Style>
+  <Style Selector="Border.chip.live">
+    <Setter Property="Background" Value="{StaticResource Sp.LiveBrush}" />
+  </Style>
+  <Style Selector="Border.chip.rec">
+    <Setter Property="Background" Value="{StaticResource Sp.RecBrush}" />
+  </Style>
+
+  <!-- Listas de escenas y fuentes -->
+  <Style Selector="ListBox.studioList">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Padding" Value="4" />
+  </Style>
+  <Style Selector="ListBox.studioList ListBoxItem">
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="MinHeight" Value="30" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+  <Style Selector="ListBox.studioList ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="#FF23406B" />
+  </Style>
+
+  <!-- Barra lateral de navegación -->
+  <Style Selector="ListBox.nav">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.nav ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="6,2" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Height" Value="40" />
+  </Style>
+
+  <!-- Banner de error -->
+  <Style Selector="Border.banner">
+    <Setter Property="Background" Value="#FF3A1D20" />
+    <Setter Property="BorderBrush" Value="{StaticResource Sp.LiveBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="10,6" />
+  </Style>
+
+  <Style Selector="GridSplitter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+</Styles>

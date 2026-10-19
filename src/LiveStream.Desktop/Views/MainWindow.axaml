@@ -1,0 +1,584 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:LiveStream.Desktop.ViewModels"
+        xmlns:c="using:LiveStream.Desktop.Components"
+        xmlns:dom="using:LiveStream.Domain.Entities"
+        x:Class="LiveStream.Desktop.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        x:Name="Root"
+        Title="{Binding Title}"
+        Width="1600" Height="940" MinWidth="1000" MinHeight="640" WindowState="Maximized">
+
+  <DockPanel>
+    <!-- ===== Barra superior: menús + estado ===== -->
+    <Border DockPanel.Dock="Top" Background="{StaticResource Sp.Bg1Brush}" BorderBrush="{StaticResource Sp.LineBrush}" BorderThickness="0,0,0,1">
+      <DockPanel Height="38">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0" VerticalAlignment="Center">
+          <Border Classes="chip" Classes.live="{Binding IsStreaming}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{StaticResource Icon.Broadcast}" Width="12" Height="12" />
+              <TextBlock Text="EN DIRECTO" FontWeight="SemiBold" FontSize="11" IsVisible="{Binding IsStreaming}" />
+              <TextBlock Text="Sin emitir" FontSize="11" IsVisible="{Binding !IsStreaming}" />
+              <TextBlock Text="{Binding StreamTime}" FontFamily="{StaticResource Sp.Mono}" FontSize="11" IsVisible="{Binding IsStreaming}" />
+              <TextBlock Text="· Reconectando" FontSize="11" IsVisible="{Binding StreamReconnecting}" />
+            </StackPanel>
+          </Border>
+          <Border Classes="chip" Classes.rec="{Binding IsRecording}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{StaticResource Icon.Record}" Width="10" Height="10" />
+              <TextBlock Text="REC" FontWeight="SemiBold" FontSize="11" />
+              <TextBlock Text="{Binding RecordTime}" FontFamily="{StaticResource Sp.Mono}" FontSize="11" IsVisible="{Binding IsRecording}" />
+            </StackPanel>
+          </Border>
+          <TextBlock Text="{Binding CpuText}" Classes="muted" VerticalAlignment="Center" FontSize="12" />
+          <TextBlock Text="{Binding FpsText}" Classes="muted" VerticalAlignment="Center" FontSize="12" />
+        </StackPanel>
+        <Menu VerticalAlignment="Center">
+          <MenuItem Header="_Archivo">
+            <MenuItem Header="Nuevo proyecto horizontal (1920x1080)" Command="{Binding NewProjectCommand}" CommandParameter="horizontal" />
+            <MenuItem Header="Nuevo proyecto vertical (1080x1920)" Command="{Binding NewProjectCommand}" CommandParameter="vertical" />
+            <MenuItem Header="Abrir proyecto…" Command="{Binding OpenProjectCommand}" InputGesture="Ctrl+O" />
+            <Separator />
+            <MenuItem Header="Guardar" Command="{Binding SaveProjectCommand}" InputGesture="Ctrl+S" />
+            <MenuItem Header="Guardar como…" Command="{Binding SaveProjectAsCommand}" />
+            <Separator />
+            <MenuItem Header="Salir" Click="OnExit" />
+          </MenuItem>
+          <MenuItem Header="_Editar">
+            <MenuItem Header="{Binding UndoText}" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}" InputGesture="Ctrl+Z" />
+            <MenuItem Header="{Binding RedoText}" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}" InputGesture="Ctrl+Y" />
+            <Separator />
+            <MenuItem Header="Eliminar selección" Command="{Binding RemoveSourceCommand}" InputGesture="Delete" />
+            <MenuItem Header="Editar transformación…" Click="OnEditTransform" InputGesture="Ctrl+E" />
+            <MenuItem Header="Transformar">
+              <MenuItem Header="Ajustar a pantalla" Command="{Binding FitToScreenCommand}" InputGesture="Ctrl+F" />
+              <MenuItem Header="Centrar" Command="{Binding CenterSelectionCommand}" />
+              <MenuItem Header="Restablecer" Command="{Binding ResetTransformCommand}" InputGesture="Ctrl+R" />
+              <Separator />
+              <MenuItem Header="Girar 90° a la derecha" Command="{Binding RotateCommand}" CommandParameter="90" />
+              <MenuItem Header="Girar 90° a la izquierda" Command="{Binding RotateCommand}" CommandParameter="-90" />
+              <MenuItem Header="Girar 180°" Command="{Binding RotateCommand}" CommandParameter="180" />
+              <Separator />
+              <MenuItem Header="Voltear horizontal" Command="{Binding FlipCommand}" CommandParameter="h" />
+              <MenuItem Header="Voltear vertical" Command="{Binding FlipCommand}" CommandParameter="v" />
+            </MenuItem>
+          </MenuItem>
+          <MenuItem Header="_Ver">
+            <MenuItem Header="Modo estudio" Command="{Binding ToggleStudioModeCommand}">
+              <MenuItem.Icon><CheckBox IsChecked="{Binding StudioMode, Mode=OneWay}" IsHitTestVisible="False" /></MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="Ajustar lienzo a la ventana" Click="OnFitView" InputGesture="Ctrl+0" />
+            <MenuItem Header="Acercar" Click="OnZoomIn" InputGesture="Ctrl+OemPlus" />
+            <MenuItem Header="Alejar" Click="OnZoomOut" InputGesture="Ctrl+OemMinus" />
+            <Separator />
+            <MenuItem Header="Restablecer distribución de paneles" Click="OnResetLayout" />
+          </MenuItem>
+          <MenuItem Header="_Perfil">
+            <MenuItem Header="{Binding CanvasText}" IsEnabled="False" />
+            <MenuItem Header="Destinos de emisión (multistream)…" Click="OnDestinations" />
+            <MenuItem Header="Ajustes de transmisión, grabación y video…" Click="OnSettings" />
+          </MenuItem>
+          <MenuItem Header="_Herramientas">
+            <MenuItem Header="Propiedades de la fuente…" Click="OnProperties" />
+            <MenuItem Header="Filtros de la fuente…" Click="OnSourceFilters" />
+            <MenuItem Header="Ajustes de la transición…" Click="OnTransitionSettings" />
+            <MenuItem Header="Rendimiento y optimización…" Click="OnPerformance" />
+            <MenuItem Header="Abrir carpeta de grabaciones" Click="OnOpenRecordings" />
+            <MenuItem Header="Abrir carpeta de proyectos" Click="OnOpenProjects" />
+            <MenuItem Header="Abrir registros de diagnóstico" Click="OnOpenLogs" />
+          </MenuItem>
+          <MenuItem Header="Ay_uda">
+            <MenuItem Header="Atajos de teclado" Click="OnShortcuts" />
+            <MenuItem Header="Buscar actualizaciones…" Click="OnCheckUpdates" />
+            <MenuItem Header="Acerca de LiveStream" Click="OnAbout" />
+          </MenuItem>
+        </Menu>
+      </DockPanel>
+    </Border>
+
+    <!-- ===== Barra de estado ===== -->
+    <Border DockPanel.Dock="Bottom" Background="{StaticResource Sp.Bg1Brush}" BorderBrush="{StaticResource Sp.LineBrush}" BorderThickness="0,1,0,0" Padding="12,0">
+      <DockPanel Height="26">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+          <TextBlock Text="{Binding DroppedText}" Classes="muted" FontSize="11" />
+          <TextBlock Text="{Binding BitrateText}" Classes="muted" FontSize="11" />
+          <TextBlock Text="{Binding RenderText}" Classes="muted" FontSize="11" />
+          <TextBlock Text="{Binding MemoryText}" Classes="muted" FontSize="11" />
+          <TextBlock Classes="muted" FontSize="11">
+            <Run Text="Guardado " /><Run Text="{Binding LastSaved}" />
+          </TextBlock>
+        </StackPanel>
+        <TextBlock Text="{Binding StatusMessage}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+      </DockPanel>
+    </Border>
+
+    <!-- ===== Barra lateral ===== -->
+    <Border DockPanel.Dock="Left" Width="64" Background="{StaticResource Sp.Bg1Brush}" BorderBrush="{StaticResource Sp.LineBrush}" BorderThickness="0,0,1,0">
+      <StackPanel Spacing="4" Margin="0,10">
+        <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Estudio" ToolTip.Tip="Estudio" Background="{StaticResource Sp.Bg3Brush}">
+          <StackPanel Spacing="2">
+            <PathIcon Data="{StaticResource Icon.Studio}" Width="18" Height="18" />
+            <TextBlock Text="Estudio" FontSize="9" HorizontalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <ToggleButton Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" IsChecked="{Binding Assistant.IsOpen}"
+                      AutomationProperties.Name="Asistente de IA" ToolTip.Tip="Asistente de IA (Ctrl+Espacio)">
+          <StackPanel Spacing="2">
+            <PathIcon Data="{StaticResource Icon.Assistant}" Width="18" Height="18" />
+            <TextBlock Text="Asistente" FontSize="9" HorizontalAlignment="Center" />
+          </StackPanel>
+        </ToggleButton>
+        <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Rendimiento y optimización" ToolTip.Tip="Rendimiento y optimización" Click="OnPerformance">
+          <StackPanel Spacing="2">
+            <PathIcon Data="{StaticResource Icon.Gauge}" Width="18" Height="18" />
+            <TextBlock Text="Rendim." FontSize="9" HorizontalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Ajustes de salida y video" ToolTip.Tip="Ajustes de salida y video" Click="OnSettings">
+          <StackPanel Spacing="2">
+            <PathIcon Data="{StaticResource Icon.Gear}" Width="18" Height="18" />
+            <TextBlock Text="Ajustes" FontSize="9" HorizontalAlignment="Center" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+    </Border>
+
+    <!-- ===== Asistente de IA ===== -->
+    <Border DockPanel.Dock="Right" Width="340" IsVisible="{Binding Assistant.IsOpen}" Background="{StaticResource Sp.Bg1Brush}"
+            BorderBrush="{StaticResource Sp.LineBrush}" BorderThickness="1,0,0,0">
+      <DockPanel x:DataType="vm:AssistantViewModel" DataContext="{Binding Assistant}">
+        <Border DockPanel.Dock="Top" Classes="panelHeader">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <Button Classes="icon" Command="{Binding NewConversationCommand}" AutomationProperties.Name="Nueva conversación" ToolTip.Tip="Nueva conversación">
+                <PathIcon Data="{StaticResource Icon.Plus}" />
+              </Button>
+              <Button Classes="icon" Command="{Binding ToggleCommand}" AutomationProperties.Name="Cerrar el asistente" ToolTip.Tip="Cerrar">
+                <PathIcon Data="{StaticResource Icon.Close}" />
+              </Button>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Classes="panelTitle" Text="Asistente" />
+              <TextBlock Classes="muted" FontSize="11" Text="{Binding ModelName}" VerticalAlignment="Center" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+
+        <!-- Configuración de la clave -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="12" Spacing="8" IsVisible="{Binding !HasApiKey}">
+          <TextBlock TextWrapping="Wrap" Text="El asistente usa la API de Claude (Anthropic). Pega tu clave de API; se guarda cifrada para tu usuario de Windows y no sale de este equipo salvo hacia la API." />
+          <TextBox Text="{Binding ApiKeyInput}" PasswordChar="•" Watermark="sk-ant-…" AutomationProperties.Name="Clave de API de Anthropic" />
+          <Button Classes="primary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Content="Guardar clave" Command="{Binding SaveApiKeyCommand}" />
+          <TextBlock Classes="muted" FontSize="11" TextWrapping="Wrap" Text="Se crea en console.anthropic.com → API keys. El uso se factura en tu cuenta de Anthropic." />
+        </StackPanel>
+
+        <!-- Entrada -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="10" Spacing="6" IsVisible="{Binding HasApiKey}">
+          <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3" MinHeight="3" />
+          <DockPanel>
+            <Panel DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Bottom">
+              <Button Classes="primary" Width="40" Height="36" Command="{Binding SendCommand}" IsVisible="{Binding !IsBusy}"
+                      AutomationProperties.Name="Enviar al asistente" ToolTip.Tip="Enviar (Intro)">
+                <PathIcon Data="{StaticResource Icon.Send}" Width="14" Height="14" />
+              </Button>
+              <Button Classes="live" Width="40" Height="36" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}"
+                      AutomationProperties.Name="Detener al asistente" ToolTip.Tip="Detener">
+                <PathIcon Data="{StaticResource Icon.Stop}" Width="12" Height="12" />
+              </Button>
+            </Panel>
+            <TextBox x:Name="AssistantInput" Text="{Binding Input}" TextWrapping="Wrap" MaxHeight="120" AcceptsReturn="False"
+                     Watermark="Pide algo: «crea una escena de entrevista con cámara y rótulo»…" AutomationProperties.Name="Mensaje para el asistente">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+          </DockPanel>
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Padding="6,0" Height="20" MinWidth="0" FontSize="10" Content="Quitar clave" Command="{Binding RemoveApiKeyCommand}"
+                    IsVisible="{Binding HasStoredKey}" AutomationProperties.Name="Quitar la clave de API" />
+            <TextBlock Classes="muted" FontSize="10" Text="{Binding KeySource}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </DockPanel>
+        </StackPanel>
+
+        <!-- Conversación -->
+        <Panel>
+          <StackPanel Margin="16" Spacing="8" IsVisible="{Binding !Messages.Count}">
+            <TextBlock TextWrapping="Wrap" Text="Opero el estudio por ti: escenas, fuentes, audio, transiciones, gráficos, grabación y emisión. Cada cambio se puede deshacer, y para emitir o borrar te pediré confirmación." />
+            <TextBlock Classes="muted" FontSize="11" Text="Prueba con:" Margin="0,6,0,0" />
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding SuggestCommand}"
+                    CommandParameter="Crea una escena «Entrevista» con la cámara ajustada a pantalla y un rótulo con mi nombre."
+                    Content="Escena de entrevista con cámara y rótulo" IsEnabled="{Binding HasApiKey}" />
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding SuggestCommand}"
+                    CommandParameter="Pon supresión de ruido y un compresor al micrófono."
+                    Content="Limpiar el audio del micrófono" IsEnabled="{Binding HasApiKey}" />
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding SuggestCommand}"
+                    CommandParameter="Prepara una cuenta atrás de 5 minutos con el texto «EMPEZAMOS EN», lánzala y ponla en marcha."
+                    Content="Cuenta atrás de inicio de directo" IsEnabled="{Binding HasApiKey}" />
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding SuggestCommand}"
+                    CommandParameter="¿Qué hay ahora mismo en el estudio?"
+                    Content="Resumen del estudio" IsEnabled="{Binding HasApiKey}" />
+          </StackPanel>
+          <ScrollViewer x:Name="ChatScroll" IsVisible="{Binding Messages.Count}">
+            <ItemsControl ItemsSource="{Binding Messages}" Margin="10,8">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChatEntry">
+                  <Panel Margin="0,4">
+                    <Border IsVisible="{Binding IsUser}" HorizontalAlignment="Right" MaxWidth="300" CornerRadius="8" Padding="10,6"
+                            Background="{StaticResource Sp.AccentBrush}">
+                      <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="White" />
+                    </Border>
+                    <Border IsVisible="{Binding IsAssistant}" HorizontalAlignment="Left" MaxWidth="330" CornerRadius="8" Padding="10,6"
+                            Background="{StaticResource Sp.Bg3Brush}">
+                      <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                    </Border>
+                    <SelectableTextBlock IsVisible="{Binding IsAction}" Text="{Binding Text}" TextWrapping="Wrap" FontSize="11"
+                                         Foreground="{StaticResource Sp.TextMutedBrush}" Margin="6,0" />
+                    <SelectableTextBlock IsVisible="{Binding IsError}" Text="{Binding Text}" TextWrapping="Wrap" FontSize="11"
+                                         Foreground="{StaticResource Sp.LiveBrush}" Margin="6,0" />
+                  </Panel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Panel>
+      </DockPanel>
+    </Border>
+
+    <!-- ===== Área de trabajo ===== -->
+    <Grid x:Name="Workspace" RowDefinitions="Auto,*,6,260" Margin="8,8,8,8">
+      <Border Grid.Row="0" Classes="banner" Margin="0,0,0,8" IsVisible="{Binding EngineError, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <PathIcon Data="{StaticResource Icon.Warning}" Width="16" Height="16" Foreground="{StaticResource Sp.LiveBrush}" />
+          <TextBlock Text="{Binding EngineError}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- Lienzo -->
+      <Border Grid.Row="1" Classes="panel">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Classes="panelHeader">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <ToggleButton Classes="icon" IsChecked="{Binding SnapEnabled}" AutomationProperties.Name="Guías magnéticas (mantén Ctrl para desactivarlas al arrastrar)" ToolTip.Tip="Guías magnéticas (mantén Ctrl para desactivarlas al arrastrar)">
+                  <PathIcon Data="{StaticResource Icon.Magnet}" />
+                </ToggleButton>
+                <Button Classes="icon" Click="OnZoomOut" AutomationProperties.Name="Alejar" ToolTip.Tip="Alejar"><PathIcon Data="{StaticResource Icon.ZoomOut}" /></Button>
+                <TextBlock Text="{Binding ZoomText}" Width="56" TextAlignment="Center" VerticalAlignment="Center" FontSize="12" Classes="muted" />
+                <Button Classes="icon" Click="OnZoomIn" AutomationProperties.Name="Acercar" ToolTip.Tip="Acercar"><PathIcon Data="{StaticResource Icon.ZoomIn}" /></Button>
+                <Button Classes="icon" Click="OnFitView" AutomationProperties.Name="Ajustar a la ventana" ToolTip.Tip="Ajustar a la ventana"><PathIcon Data="{StaticResource Icon.Fit}" /></Button>
+                <ToggleButton Classes="icon" IsChecked="{Binding StudioMode, Mode=OneWay}" Command="{Binding ToggleStudioModeCommand}" AutomationProperties.Name="Modo estudio" ToolTip.Tip="Modo estudio">
+                  <PathIcon Data="{StaticResource Icon.Studio}" />
+                </ToggleButton>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBlock Classes="panelTitle" Text="Vista previa" IsVisible="{Binding StudioMode}" />
+                <TextBlock Classes="panelTitle" Text="Programa" IsVisible="{Binding !StudioMode}" />
+                <TextBlock Classes="muted" FontSize="11" Text="{Binding CanvasText}" VerticalAlignment="Center" />
+                <TextBlock Classes="muted" FontSize="11" VerticalAlignment="Center"
+                           Text="Arrastra para mover · tiradores para escalar · Alt recorta · Shift libera la proporción · rueda para zoom · botón central para desplazar" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <Grid x:Name="CanvasGrid" ColumnDefinitions="*,Auto,*">
+            <c:PreviewHost x:Name="Preview" Grid.Column="0" Margin="1" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8" Margin="8,0" IsVisible="{Binding StudioMode}">
+              <Button Classes="control primary" Width="120" Command="{Binding TransitionToProgramCommand}" AutomationProperties.Name="Lleva la vista previa al programa" ToolTip.Tip="Lleva la vista previa al programa">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Data="{StaticResource Icon.Transition}" Width="14" Height="14" />
+                  <TextBlock Text="Transición" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+            <DockPanel Grid.Column="2" IsVisible="{Binding StudioMode}" Margin="1">
+              <TextBlock DockPanel.Dock="Top" Text="Programa" Classes="panelTitle" Margin="8,4" Foreground="{StaticResource Sp.LiveBrush}" />
+              <c:PreviewHost x:Name="Program" />
+            </DockPanel>
+          </Grid>
+        </DockPanel>
+      </Border>
+
+      <GridSplitter Grid.Row="2" ResizeDirection="Rows" />
+
+      <!-- Paneles inferiores (redimensionables) -->
+      <Grid x:Name="Docks" Grid.Row="3" ColumnDefinitions="0.9*,6,1.2*,6,1.4*,6,1.5*,6,1*,6,0.9*">
+
+        <!-- Escenas -->
+        <Border Grid.Column="0" Classes="panel">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Classes="panelHeader">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                  <Button Classes="icon" Command="{Binding AddSceneCommand}" AutomationProperties.Name="Nueva escena" ToolTip.Tip="Nueva escena"><PathIcon Data="{StaticResource Icon.Plus}" /></Button>
+                  <Button Classes="icon" Command="{Binding RemoveSceneCommand}" AutomationProperties.Name="Eliminar escena" ToolTip.Tip="Eliminar escena"><PathIcon Data="{StaticResource Icon.Trash}" /></Button>
+                  <Button Classes="icon" Command="{Binding DuplicateSceneCommand}" AutomationProperties.Name="Duplicar escena" ToolTip.Tip="Duplicar escena"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
+                  <Button Classes="icon" Command="{Binding RenameSceneCommand}" AutomationProperties.Name="Renombrar (F2)" ToolTip.Tip="Renombrar (F2)"><PathIcon Data="{StaticResource Icon.Pencil}" /></Button>
+                  <Button Classes="icon" Command="{Binding MoveSceneUpCommand}" AutomationProperties.Name="Subir" ToolTip.Tip="Subir"><PathIcon Data="{StaticResource Icon.Up}" /></Button>
+                  <Button Classes="icon" Command="{Binding MoveSceneDownCommand}" AutomationProperties.Name="Bajar" ToolTip.Tip="Bajar"><PathIcon Data="{StaticResource Icon.Down}" /></Button>
+                </StackPanel>
+                <TextBlock Classes="panelTitle" Text="Escenas" />
+              </DockPanel>
+            </Border>
+            <ListBox Classes="studioList" ItemsSource="{Binding Scenes}" SelectedItem="{Binding SelectedScene}">
+              <ListBox.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="Transición de la escena…" Click="OnSceneTransition" />
+                  <MenuItem Header="Renombrar" Command="{Binding RenameSceneCommand}" />
+                  <MenuItem Header="Duplicar" Command="{Binding DuplicateSceneCommand}" />
+                  <MenuItem Header="Eliminar" Command="{Binding RemoveSceneCommand}" />
+                </ContextMenu>
+              </ListBox.ContextMenu>
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:SceneRowViewModel">
+                  <DockPanel>
+                    <Border DockPanel.Dock="Right" Classes="chip live" Padding="6,0" IsVisible="{Binding IsProgram}">
+                      <TextBlock Text="PGM" FontSize="10" FontWeight="SemiBold" />
+                    </Border>
+                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  </DockPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+        <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
+
+        <!-- Fuentes -->
+        <Border Grid.Column="2" Classes="panel">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Classes="panelHeader">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                  <Button Classes="icon" Click="OnAddSource" AutomationProperties.Name="Añadir fuente" ToolTip.Tip="Añadir fuente"><PathIcon Data="{StaticResource Icon.Plus}" /></Button>
+                  <Button Classes="icon" Command="{Binding RemoveSourceCommand}" AutomationProperties.Name="Eliminar (Supr)" ToolTip.Tip="Eliminar (Supr)"><PathIcon Data="{StaticResource Icon.Trash}" /></Button>
+                  <Button Classes="icon" Click="OnProperties" AutomationProperties.Name="Propiedades" ToolTip.Tip="Propiedades"><PathIcon Data="{StaticResource Icon.Gear}" /></Button>
+                  <Button Classes="icon" Click="OnSourceFilters" AutomationProperties.Name="Filtros" ToolTip.Tip="Filtros (color, croma, máscara…)"><PathIcon Data="{StaticResource Icon.Filter}" /></Button>
+                  <Button Classes="icon" Click="OnEditTransform" AutomationProperties.Name="Transformación" ToolTip.Tip="Transformación"><PathIcon Data="{StaticResource Icon.Sliders}" /></Button>
+                  <Button Classes="icon" Command="{Binding MoveSourceUpCommand}" AutomationProperties.Name="Subir capa" ToolTip.Tip="Subir capa"><PathIcon Data="{StaticResource Icon.Up}" /></Button>
+                  <Button Classes="icon" Command="{Binding MoveSourceDownCommand}" AutomationProperties.Name="Bajar capa" ToolTip.Tip="Bajar capa"><PathIcon Data="{StaticResource Icon.Down}" /></Button>
+                </StackPanel>
+                <TextBlock Classes="panelTitle" Text="Fuentes" />
+              </DockPanel>
+            </Border>
+            <Panel>
+              <TextBlock Text="Escena vacía. Pulsa + para añadir una cámara, pantalla, imagen, texto…" Classes="muted" TextWrapping="Wrap"
+                         Margin="12" IsVisible="{Binding !Sources.Count}" />
+              <ListBox x:Name="SourceList" Classes="studioList" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}" DoubleTapped="OnSourceDoubleTapped">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SourceRowViewModel">
+                    <DockPanel>
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Classes="icon" Width="24" Height="24" AutomationProperties.Name="Mostrar u ocultar" ToolTip.Tip="Mostrar u ocultar"
+                                Command="{Binding #Root.((vm:MainViewModel)DataContext).ToggleVisibleCommand}" CommandParameter="{Binding}">
+                          <Panel>
+                            <PathIcon Data="{StaticResource Icon.Eye}" IsVisible="{Binding Visible}" />
+                            <PathIcon Data="{StaticResource Icon.EyeOff}" IsVisible="{Binding !Visible}" Opacity="0.6" />
+                          </Panel>
+                        </Button>
+                        <Button Classes="icon" Width="24" Height="24" AutomationProperties.Name="Bloquear o desbloquear" ToolTip.Tip="Bloquear o desbloquear"
+                                Command="{Binding #Root.((vm:MainViewModel)DataContext).ToggleLockedCommand}" CommandParameter="{Binding}">
+                          <Panel>
+                            <PathIcon Data="{StaticResource Icon.Lock}" IsVisible="{Binding Locked}" />
+                            <PathIcon Data="{StaticResource Icon.Unlock}" IsVisible="{Binding !Locked}" Opacity="0.45" />
+                          </Panel>
+                        </Button>
+                      </StackPanel>
+                      <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding KindLabel}" Classes="muted" FontSize="10" />
+                      </StackPanel>
+                    </DockPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Panel>
+          </DockPanel>
+        </Border>
+        <GridSplitter Grid.Column="3" ResizeDirection="Columns" />
+
+        <!-- Gráficos (capa superpuesta al programa) -->
+        <Border Grid.Column="4" Classes="panel">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Classes="panelHeader">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                  <Button x:Name="AddGraphicButton" Classes="icon" AutomationProperties.Name="Añadir gráfico" ToolTip.Tip="Añadir gráfico">
+                    <PathIcon Data="{StaticResource Icon.Plus}" />
+                    <Button.Flyout>
+                      <MenuFlyout>
+                        <MenuFlyout.ItemsSource>
+                          <Binding Path="GraphicKinds" />
+                        </MenuFlyout.ItemsSource>
+                        <MenuFlyout.ItemContainerTheme>
+                          <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:GraphicKindOption">
+                            <Setter Property="Header" Value="{Binding Label}" />
+                            <Setter Property="Command" Value="{Binding #Root.((vm:MainViewModel)DataContext).AddGraphicCommand}" />
+                            <Setter Property="CommandParameter" Value="{Binding Kind}" />
+                          </ControlTheme>
+                        </MenuFlyout.ItemContainerTheme>
+                      </MenuFlyout>
+                    </Button.Flyout>
+                  </Button>
+                  <Button Classes="icon" Click="OnAddGraphicFromTemplate" AutomationProperties.Name="Añadir desde plantilla guardada" ToolTip.Tip="Añadir desde plantilla guardada"><PathIcon Data="{StaticResource Icon.Template}" /></Button>
+                  <Button Classes="icon" Click="OnEditGraphic" AutomationProperties.Name="Editar gráfico" ToolTip.Tip="Editar gráfico"><PathIcon Data="{StaticResource Icon.Pencil}" /></Button>
+                  <Button Classes="icon" Command="{Binding DuplicateGraphicCommand}" AutomationProperties.Name="Duplicar gráfico" ToolTip.Tip="Duplicar gráfico"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
+                  <Button Classes="icon" Command="{Binding RemoveGraphicCommand}" AutomationProperties.Name="Eliminar gráfico" ToolTip.Tip="Eliminar gráfico"><PathIcon Data="{StaticResource Icon.Trash}" /></Button>
+                  <Button Classes="icon" Command="{Binding MoveGraphicUpCommand}" AutomationProperties.Name="Subir capa del gráfico" ToolTip.Tip="Subir capa"><PathIcon Data="{StaticResource Icon.Up}" /></Button>
+                  <Button Classes="icon" Command="{Binding MoveGraphicDownCommand}" AutomationProperties.Name="Bajar capa del gráfico" ToolTip.Tip="Bajar capa"><PathIcon Data="{StaticResource Icon.Down}" /></Button>
+                </StackPanel>
+                <TextBlock Classes="panelTitle" Text="Gráficos" />
+              </DockPanel>
+            </Border>
+            <Button DockPanel.Dock="Bottom" Classes="control" Margin="8,4,8,8" Command="{Binding TakeAllGraphicsOutCommand}"
+                    Content="Retirar todos los gráficos" AutomationProperties.Name="Retirar todos los gráficos" />
+            <Panel>
+              <TextBlock Text="Rótulos, titulares, cintillos, marcadores, cuentas atrás… Pulsa + para crear uno; AIRE lo lanza sobre el programa."
+                         Classes="muted" TextWrapping="Wrap" Margin="12" IsVisible="{Binding !Graphics.Count}" />
+              <ListBox x:Name="GraphicList" Classes="studioList" ItemsSource="{Binding Graphics}" SelectedItem="{Binding SelectedGraphic}" DoubleTapped="OnGraphicDoubleTapped">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:GraphicRowViewModel">
+                    <DockPanel>
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                        <Button Classes="icon" Width="24" Height="24" IsVisible="{Binding IsCountdown}" AutomationProperties.Name="Iniciar o pausar la cuenta atrás" ToolTip.Tip="Iniciar / pausar"
+                                Command="{Binding #Root.((vm:MainViewModel)DataContext).CountdownStartPauseCommand}" CommandParameter="{Binding}">
+                          <Panel>
+                            <PathIcon Data="{StaticResource Icon.Play}" Width="12" Height="12" IsVisible="{Binding !CountdownRunning}" />
+                            <PathIcon Data="{StaticResource Icon.Pause}" Width="12" Height="12" IsVisible="{Binding CountdownRunning}" />
+                          </Panel>
+                        </Button>
+                        <Button Classes="icon" Width="24" Height="24" IsVisible="{Binding IsCountdown}" AutomationProperties.Name="Reiniciar la cuenta atrás" ToolTip.Tip="Reiniciar"
+                                Command="{Binding #Root.((vm:MainViewModel)DataContext).CountdownResetCommand}" CommandParameter="{Binding}">
+                          <PathIcon Data="{StaticResource Icon.Reset}" Width="12" Height="12" />
+                        </Button>
+                        <Button Classes="icon" Height="24" Padding="4,0" IsVisible="{Binding IsScoreboard}" Content="+1 L" FontSize="10" AutomationProperties.Name="Tanto del local" ToolTip.Tip="Tanto del local"
+                                Command="{Binding #Root.((vm:MainViewModel)DataContext).ScoreHomeCommand}" CommandParameter="{Binding}" />
+                        <Button Classes="icon" Height="24" Padding="4,0" IsVisible="{Binding IsScoreboard}" Content="+1 V" FontSize="10" AutomationProperties.Name="Tanto del visitante" ToolTip.Tip="Tanto del visitante"
+                                Command="{Binding #Root.((vm:MainViewModel)DataContext).ScoreAwayCommand}" CommandParameter="{Binding}" />
+                        <ToggleButton Classes="air" IsChecked="{Binding OnAir, Mode=OneWay}" Content="AIRE" FontSize="10" FontWeight="SemiBold" Padding="8,2"
+                                      AutomationProperties.Name="{Binding Name, StringFormat='Al aire: {0}'}" ToolTip.Tip="Lanzar o retirar del programa"
+                                      Command="{Binding #Root.((vm:MainViewModel)DataContext).ToggleGraphicCommand}" CommandParameter="{Binding}" />
+                      </StackPanel>
+                      <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="10" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </DockPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Panel>
+          </DockPanel>
+        </Border>
+        <GridSplitter Grid.Column="5" ResizeDirection="Columns" />
+
+        <!-- Mezclador -->
+        <Border Grid.Column="6" Classes="panel">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Classes="panelHeader">
+              <TextBlock Classes="panelTitle" Text="Mezclador de audio" />
+            </Border>
+            <ScrollViewer>
+              <ItemsControl ItemsSource="{Binding Mixer}" Margin="8,4">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:MixerChannelViewModel">
+                    <StackPanel Spacing="2" Margin="0,4,0,8">
+                      <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding VolumeText}" FontFamily="{StaticResource Sp.Mono}" FontSize="11" Classes="muted" />
+                        <TextBlock Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                      </DockPanel>
+                      <c:AudioMeter Height="10" PeakLeft="{Binding PeakLeft}" PeakRight="{Binding PeakRight}"
+                                    MagnitudeLeft="{Binding MagnitudeLeft}" MagnitudeRight="{Binding MagnitudeRight}" Muted="{Binding Muted}" />
+                      <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                          <Button Classes="icon" Width="26" Height="26" AutomationProperties.Name="Filtros de audio" ToolTip.Tip="Filtros de audio (supresión de ruido, compresor…)"
+                                  Click="OnMixerFilters">
+                            <PathIcon Data="{StaticResource Icon.Filter}" />
+                          </Button>
+                          <Button Classes="icon" Width="26" Height="26" AutomationProperties.Name="Silenciar" ToolTip.Tip="Silenciar"
+                                  Command="{Binding #Root.((vm:MainViewModel)DataContext).ToggleMuteCommand}" CommandParameter="{Binding}">
+                            <Panel>
+                              <PathIcon Data="{StaticResource Icon.Speaker}" IsVisible="{Binding !Muted}" />
+                              <PathIcon Data="{StaticResource Icon.Mute}" IsVisible="{Binding Muted}" Foreground="{StaticResource Sp.LiveBrush}" />
+                            </Panel>
+                          </Button>
+                          <Button Classes="icon" Width="26" Height="26" AutomationProperties.Name="Monitorización (escuchar en auriculares)" ToolTip.Tip="Monitorización (escuchar en auriculares)">
+                            <PathIcon Data="{StaticResource Icon.Headphones}" Opacity="{Binding IsMonitored, Converter={x:Static c:Converters.OnOpacity}}" />
+                            <Button.Flyout>
+                              <MenuFlyout>
+                                <MenuItem Header="Sin monitorización" Command="{Binding SetMonitoringCommand}" CommandParameter="{x:Static dom:AudioMonitoring.None}" />
+                                <MenuItem Header="Solo monitorizar (no sale en la emisión)" Command="{Binding SetMonitoringCommand}" CommandParameter="{x:Static dom:AudioMonitoring.MonitorOnly}" />
+                                <MenuItem Header="Monitorizar y emitir" Command="{Binding SetMonitoringCommand}" CommandParameter="{x:Static dom:AudioMonitoring.MonitorAndOutput}" />
+                              </MenuFlyout>
+                            </Button.Flyout>
+                          </Button>
+                        </StackPanel>
+                        <Slider Minimum="-60" Maximum="0" Value="{Binding VolumeDb}" SmallChange="0.5" LargeChange="3" VerticalAlignment="Center" Margin="0,-8" />
+                      </DockPanel>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </DockPanel>
+        </Border>
+        <GridSplitter Grid.Column="7" ResizeDirection="Columns" />
+
+        <!-- Transiciones -->
+        <Border Grid.Column="8" Classes="panel">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Classes="panelHeader">
+              <TextBlock Classes="panelTitle" Text="Transiciones" />
+            </Border>
+            <StackPanel Margin="10" Spacing="8">
+              <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Transitions}" SelectedValue="{Binding TransitionId}" SelectedValueBinding="{Binding Key}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding Value}" /></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <TextBlock Text="Duración (ms)" Classes="muted" FontSize="11" />
+              <NumericUpDown Value="{Binding TransitionDurationMs}" Minimum="0" Maximum="20000" Increment="50" FormatString="0" />
+              <Button Content="Ajustes de la transición…" HorizontalAlignment="Stretch" Click="OnTransitionSettings" />
+              <TextBlock Classes="muted" FontSize="11" TextWrapping="Wrap"
+                         Text="Se usa al cambiar la escena de programa. Clic derecho en una escena para darle una transición propia (stinger, cortinilla…)." />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+        <GridSplitter Grid.Column="9" ResizeDirection="Columns" />
+
+        <!-- Controles -->
+        <Border Grid.Column="10" Classes="panel">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Classes="panelHeader">
+              <TextBlock Classes="panelTitle" Text="Controles" />
+            </Border>
+            <StackPanel Margin="10" Spacing="8">
+              <Button Classes="control" Classes.live="{Binding IsStreaming}" Classes.primary="{Binding !IsStreaming}"
+                      Command="{Binding ToggleStreamCommand}" IsEnabled="{Binding EngineReady}"
+                      AutomationProperties.Name="{Binding IsStreaming, Converter={x:Static c:Converters.StreamActionName}}">
+                <Panel>
+                  <TextBlock Text="Iniciar transmisión" IsVisible="{Binding !IsStreaming}" />
+                  <TextBlock Text="Detener transmisión" IsVisible="{Binding IsStreaming}" />
+                </Panel>
+              </Button>
+              <Button Classes="control" Classes.rec="{Binding IsRecording}" Command="{Binding ToggleRecordCommand}" IsEnabled="{Binding EngineReady}"
+                      AutomationProperties.Name="{Binding IsRecording, Converter={x:Static c:Converters.RecordActionName}}">
+                <Panel>
+                  <TextBlock Text="Iniciar grabación" IsVisible="{Binding !IsRecording}" />
+                  <TextBlock Text="Detener grabación" IsVisible="{Binding IsRecording}" />
+                </Panel>
+              </Button>
+              <Button Classes="control" Command="{Binding ToggleStudioModeCommand}"
+                      AutomationProperties.Name="{Binding StudioMode, Converter={x:Static c:Converters.StudioActionName}}">
+                <Panel>
+                  <TextBlock Text="Modo estudio" IsVisible="{Binding !StudioMode}" />
+                  <TextBlock Text="Salir del modo estudio" IsVisible="{Binding StudioMode}" />
+                </Panel>
+              </Button>
+              <Button Classes="control" Content="Destinos" Click="OnDestinations" AutomationProperties.Name="Destinos de emisión" />
+              <Button Classes="control" Content="Ajustes" Click="OnSettings" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+      </Grid>
+    </Grid>
+  </DockPanel>
+</Window>

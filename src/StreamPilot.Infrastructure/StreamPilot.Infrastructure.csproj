@@ -1,16 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <ProjectReference Include="..\StreamPilot.Application\StreamPilot.Application.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Anthropic" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
-  </ItemGroup>
-  <ItemGroup>
-    <InternalsVisibleTo Include="StreamPilot.UnitTests" />
-  </ItemGroup>
-  <!-- Clave pública de publicación (scripts/new-release-key.ps1). Sin ella, las actualizaciones quedan desactivadas. -->
-  <ItemGroup Condition="Exists('Updateselease-public-key.pem')">
-    <EmbeddedResource Include="Updateselease-public-key.pem" LogicalName="release-public-key.pem" />
-  </ItemGroup>
-</Project>

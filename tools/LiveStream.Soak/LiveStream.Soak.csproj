@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Prueba de resistencia contra libobs real (no forma parte de dotnet test: dura minutos y necesita GPU). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LiveStream.Application\LiveStream.Application.csproj" />
+    <ProjectReference Include="..\..\src\LiveStream.Native\LiveStream.Native.csproj" />
+    <ProjectReference Include="..\..\src\LiveStream.Infrastructure\LiveStream.Infrastructure.csproj" />
+  </ItemGroup>
+  <Import Project="..\..\build\ObsRuntime.targets" />
+</Project>
