@@ -36,14 +36,24 @@ public sealed class PerformanceOptimizer(StudioSession session, AdaptiveBitrateO
     private readonly object _lock = new();
     private readonly List<OptimizationEvent> _events = [];
     private readonly Dictionary<Guid, (StreamSettings Stream, RecordingPreferences Recording)> _reverts = [];
-    private AdaptiveBitrateController? _controller;
-    private bool _wasStreaming;
-    private string? _note;
+    private readonly Dictionary<string, Group> _groups = [];
     private EngineMetrics? _previous;
     private double _renderLag, _encoderSkip;
     private int _renderBad, _encoderBad;
     private DateTime _lastRenderWarning = DateTime.MinValue, _lastEncoderWarning = DateTime.MinValue;
-    private int _currentKbps;
+
+    /// <summary>
+    /// Destinos que comparten codificador (mismos ajustes): un cambio de bitrate les afecta a todos, así que se decide
+    /// una vez por grupo con sus cifras sumadas y la peor congestión.
+    /// </summary>
+    private sealed class Group(string names, AdaptiveBitrateController? controller, string? note)
+    {
+        public string Names { get; set; } = names;
+        public AdaptiveBitrateController? Controller { get; } = controller;
+        public string? Note { get; } = note;
+        public int CurrentKbps { get; set; }
+        public bool Seen { get; set; }
+    }
 
     /// <summary>Bitrate adaptativo activado (ajusta el bitrate de la emisión en directo).</summary>
     public bool AdaptiveEnabled { get; set; } = true;
@@ -59,74 +69,89 @@ public sealed class PerformanceOptimizer(StudioSession session, AdaptiveBitrateO
         }
     }
 
+    /// <summary>Estado resumido: el grupo con más congestión (o el primero) y los avisos de sobrecarga.</summary>
     public OptimizerStatus Status
     {
         get
         {
             lock (_lock)
-                return new OptimizerStatus(AdaptiveEnabled, _controller is not null, _controller?.TargetKbps ?? 0, _currentKbps,
-                    _controller?.DropRate ?? 0, _controller?.Congestion ?? 0, _renderLag, _encoderSkip, _note);
+            {
+                var g = _groups.Values.OrderByDescending(x => x.Controller?.Congestion ?? 0).FirstOrDefault();
+                return new OptimizerStatus(AdaptiveEnabled, g is not null, g?.Controller?.TargetKbps ?? 0, g?.CurrentKbps ?? 0,
+                    g?.Controller?.DropRate ?? 0, g?.Controller?.Congestion ?? 0, _renderLag, _encoderSkip, g?.Note);
+            }
         }
     }
 
-    /// <summary>Procesa una muestra de métricas (una por segundo).</summary>
-    public async Task TickAsync(EngineMetrics m, DateTime now, CancellationToken ct = default)
+    private static string EncoderKey(EncoderSettings e) => $"{e.VideoEncoderId}|{e.VideoBitrateKbps}|{e.KeyframeIntervalSec}|{e.AudioBitrateKbps}";
+
+    /// <summary>Procesa una muestra por segundo: métricas globales y el estado de cada destino.</summary>
+    public async Task TickAsync(EngineMetrics m, DateTime now, IReadOnlyList<Streaming.DestinationStatus> destinations,
+        CancellationToken ct = default)
     {
         DetectOverload(m, now);
 
-        if (m.IsStreaming && !_wasStreaming)
-            OnStreamStarted(m);
-        else if (!m.IsStreaming && _wasStreaming)
-            OnStreamStopped();
-        _wasStreaming = m.IsStreaming;
-        if (!m.IsStreaming)
-            return;
-        _currentKbps = m.StreamVideoBitrateKbps;
+        var common = session.Project.Stream;
+        var live = destinations
+            .Where(d => d.Stats is { Active: true })
+            .Select(d => (Status: d, Encoder: session.Project.FindDestination(d.Id)?.EffectiveEncoder(common)))
+            .Where(x => x.Encoder is not null)
+            .GroupBy(x => EncoderKey(x.Encoder!))
+            .ToList();
 
-        if (_controller is null || !AdaptiveEnabled)
-            return;
-        var decision = _controller.Observe(new StreamSample(now, m.StreamDroppedFrames, m.StreamTotalFrames, m.StreamCongestion,
-            m.StreamReconnecting, m.StreamVideoBitrateKbps));
-        if (decision is null)
-            return;
-        try
+        foreach (var g in _groups.Values)
+            g.Seen = false;
+        foreach (var members in live)
         {
-            await session.Engine.SetStreamVideoBitrateAsync(decision.ToKbps, ct).ConfigureAwait(false);
-            _currentKbps = decision.ToKbps;
-            Log(OptimizationEventKind.Adjusted, $"Bitrate {decision.FromKbps} → {decision.ToKbps} kb/s",
-                $"{decision.Reason} Pérdidas {decision.DropRate:P1}, congestión {decision.Congestion:P0}. Objetivo {_controller.TargetKbps} kb/s.");
+            var key = members.Key;
+            var stats = members.Select(x => x.Status.Stats!).ToList();
+            var names = string.Join(", ", members.Select(x => x.Status.Name));
+            if (!_groups.TryGetValue(key, out var group))
+                _groups[key] = group = StartGroup(members.First().Encoder!, names, stats.All(s => s.DynamicBitrate));
+            group.Seen = true;
+            group.Names = names;
+            group.CurrentKbps = stats[0].VideoBitrateKbps;
+
+            if (group.Controller is null || !AdaptiveEnabled)
+                continue;
+            var sample = new StreamSample(now, (uint)stats.Sum(s => (long)s.DroppedFrames), (uint)stats.Sum(s => (long)s.TotalFrames),
+                stats.Max(s => s.Congestion), stats.Any(s => s.Reconnecting), group.CurrentKbps);
+            if (group.Controller.Observe(sample) is not { } decision)
+                continue;
+            try
+            {
+                await session.Engine.SetDestinationBitrateAsync(members.First().Status.Id, decision.ToKbps, ct).ConfigureAwait(false);
+                group.CurrentKbps = decision.ToKbps;
+                Log(OptimizationEventKind.Adjusted, $"Bitrate {decision.FromKbps} → {decision.ToKbps} kb/s ({names})",
+                    $"{decision.Reason} Pérdidas {decision.DropRate:P1}, congestión {decision.Congestion:P0}. Objetivo {group.Controller.TargetKbps} kb/s.");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Log(OptimizationEventKind.Warning, "No se pudo ajustar el bitrate", ex.Message);
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+
+        foreach (var (key, g) in _groups.Where(x => !x.Value.Seen).ToList())
         {
-            Log(OptimizationEventKind.Warning, "No se pudo ajustar el bitrate", ex.Message);
+            if (g.Controller is not null && g.CurrentKbps != g.Controller.TargetKbps)
+                Log(OptimizationEventKind.Info, $"Emisión detenida ({g.Names})", $"Terminó a {g.CurrentKbps} kb/s (objetivo {g.Controller.TargetKbps}).");
+            _groups.Remove(key);
         }
     }
 
-    private void OnStreamStarted(EngineMetrics m)
+    private Group StartGroup(EncoderSettings encoder, string names, bool dynamic)
     {
-        _currentKbps = m.StreamVideoBitrateKbps;
-        if (m.StreamVideoBitrateKbps <= 0)
-            return;
-        if (!m.StreamDynamicBitrate)
+        if (!dynamic)
         {
-            _controller = null;
-            _note = "El codificador de la emisión no admite cambiar el bitrate en directo: el ajuste adaptativo queda en pausa.";
-            Log(OptimizationEventKind.Info, "Bitrate adaptativo no disponible", _note);
-            return;
+            var note = $"El codificador de {names} no admite cambiar el bitrate en directo: el ajuste adaptativo queda en pausa para ese destino.";
+            Log(OptimizationEventKind.Info, "Bitrate adaptativo no disponible", note);
+            return new Group(names, null, note);
         }
-        _note = null;
-        _controller = new AdaptiveBitrateController(m.StreamVideoBitrateKbps, options);
-        Log(OptimizationEventKind.Info, "Emisión iniciada",
-            $"Objetivo {m.StreamVideoBitrateKbps} kb/s; el bitrate adaptativo puede bajar hasta {_controller.FloorKbps} kb/s si la red se satura." +
+        var controller = new AdaptiveBitrateController(encoder.VideoBitrateKbps, options);
+        Log(OptimizationEventKind.Info, $"Emisión iniciada ({names})",
+            $"Objetivo {encoder.VideoBitrateKbps} kb/s; el bitrate adaptativo puede bajar hasta {controller.FloorKbps} kb/s si la red se satura." +
             (AdaptiveEnabled ? "" : " (Desactivado por el usuario.)"));
-    }
-
-    private void OnStreamStopped()
-    {
-        if (_controller is not null && _currentKbps != _controller.TargetKbps)
-            Log(OptimizationEventKind.Info, "Emisión detenida", $"Terminó a {_currentKbps} kb/s (objetivo {_controller.TargetKbps}).");
-        _controller = null;
-        _currentKbps = 0;
+        return new Group(names, controller, null);
     }
 
     /// <summary>
@@ -164,16 +189,20 @@ public sealed class PerformanceOptimizer(StudioSession session, AdaptiveBitrateO
         }
     }
 
-    /// <summary>Vuelve al bitrate objetivo y desactiva el ajuste adaptativo hasta que el usuario lo reactive.</summary>
-    public async Task RestoreTargetAsync(CancellationToken ct = default)
+    /// <summary>Vuelve al bitrate objetivo en todos los destinos y desactiva el ajuste adaptativo.</summary>
+    public async Task RestoreTargetAsync(IReadOnlyList<Streaming.DestinationStatus> destinations, CancellationToken ct = default)
     {
         AdaptiveEnabled = false;
-        if (_controller is { } controller && _currentKbps != controller.TargetKbps)
+        var common = session.Project.Stream;
+        foreach (var d in destinations.Where(d => d.Stats is { Active: true }))
         {
-            await session.Engine.SetStreamVideoBitrateAsync(controller.TargetKbps, ct).ConfigureAwait(false);
-            _currentKbps = controller.TargetKbps;
+            var target = session.Project.FindDestination(d.Id)?.EffectiveEncoder(common).VideoBitrateKbps;
+            if (target is { } kbps && d.Stats!.VideoBitrateKbps != kbps)
+                await session.Engine.SetDestinationBitrateAsync(d.Id, kbps, ct).ConfigureAwait(false);
         }
-        Log(OptimizationEventKind.Reverted, "Bitrate restaurado", "Ajuste adaptativo desactivado; la emisión vuelve al bitrate configurado.");
+        foreach (var g in _groups.Values.Where(g => g.Controller is not null))
+            g.CurrentKbps = g.Controller!.TargetKbps;
+        Log(OptimizationEventKind.Reverted, "Bitrate restaurado", "Ajuste adaptativo desactivado; cada destino vuelve al bitrate configurado.");
     }
 
     /// <summary>Aplica los ajustes de salida de un perfil (autorizado por el usuario) guardando los anteriores para revertir.</summary>
@@ -241,9 +270,16 @@ public sealed class PerformanceOptimizer(StudioSession session, AdaptiveBitrateO
     {
         var s = Status;
         var sb = new StringBuilder();
-        sb.AppendLine(s.Active
-            ? $"Emitiendo a {s.CurrentKbps} kb/s (objetivo {s.TargetKbps}); pérdidas {s.DropRate:P1}, congestión {s.Congestion:P0}; bitrate adaptativo {(s.AdaptiveEnabled ? "activado" : "desactivado")}."
-            : $"Sin emisión activa; bitrate adaptativo {(s.AdaptiveEnabled ? "activado" : "desactivado")}.");
+        List<Group> groups;
+        lock (_lock)
+            groups = _groups.Values.ToList();
+        sb.AppendLine(groups.Count == 0
+            ? $"Sin emisión activa; bitrate adaptativo {(AdaptiveEnabled ? "activado" : "desactivado")}."
+            : $"Bitrate adaptativo {(AdaptiveEnabled ? "activado" : "desactivado")}.");
+        foreach (var g in groups)
+            sb.AppendLine(g.Controller is null
+                ? $"{g.Names}: {g.CurrentKbps} kb/s. {g.Note}"
+                : $"{g.Names}: {g.CurrentKbps} kb/s (objetivo {g.Controller.TargetKbps}); pérdidas {g.Controller.DropRate:P1}, congestión {g.Controller.Congestion:P0}.");
         sb.AppendLine($"Render con retraso {s.RenderLagRate:P1}; fotogramas descartados al codificar {s.EncoderSkipRate:P1}.");
         if (s.Note is not null)
             sb.AppendLine(s.Note);

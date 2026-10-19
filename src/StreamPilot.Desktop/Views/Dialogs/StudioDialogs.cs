@@ -348,10 +348,9 @@ public static class StudioDialogs
         ComboBox EncoderBox(string current) => new() { ItemsSource = encoderNames, SelectedIndex = Math.Max(0, encoderIds.IndexOf(current)), HorizontalAlignment = HorizontalAlignment.Stretch };
         NumericUpDown Num(int value, int min, int max, int step) => new() { Value = value, Minimum = min, Maximum = max, Increment = step, FormatString = "0", Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
 
-        // Transmisión
-        var server = new TextBox { Text = project.Stream.Server, Watermark = "rtmp://servidor/app" };
-        var hasKey = await vm.Session.HasStreamKeyAsync();
-        var key = new TextBox { PasswordChar = '•', Watermark = hasKey ? "Guardada (deja vacío para conservarla)" : "Clave de transmisión" };
+        // Transmisión: codificador común; servidores y claves van en cada destino.
+        var destinations = new Button { Content = $"Destinos de emisión… ({project.Destinations.Count(d => d.Enabled)} activos)" };
+        destinations.Click += async (_, _) => await DestinationsDialog.ShowAsync(vm);
         var streamEnc = EncoderBox(project.Stream.EffectiveEncoder.VideoEncoderId);
         var streamVideo = Num(project.Stream.EffectiveEncoder.VideoBitrateKbps, 200, 150_000, 500);
         var streamAudio = Num(project.Stream.EffectiveEncoder.AudioBitrateKbps, 32, 512, 32);
@@ -390,11 +389,11 @@ public static class StudioDialogs
             ItemsSource = new[]
             {
                 new TabItem { Header = "Transmisión", Content = new StackPanel { Children = {
-                    Form(("Servidor RTMP/RTMPS", server), ("Clave de transmisión", key), ("Codificador", streamEnc),
+                    Form(("Destinos", destinations), ("Codificador común", streamEnc),
                         ("Bitrate de video (kb/s)", streamVideo), ("Bitrate de audio (kb/s)", streamAudio), ("Fotograma clave cada (s)", keyframe)),
                     new TextBlock { Margin = new Thickness(16, 0), TextWrapping = TextWrapping.Wrap, Classes = { "muted" },
-                        Text = "La clave se guarda cifrada para tu usuario de Windows (DPAPI) y nunca se escribe en el proyecto ni en los registros. " +
-                               "YouTube, Twitch, Facebook y otros servicios publican su URL RTMP/RTMPS y la clave en su panel de directo." } } } },
+                        Text = "El codificador común lo usan los destinos sin codificador propio y lo comparten: emitir a varias plataformas " +
+                               "con los mismos ajustes no multiplica el trabajo de la CPU o la GPU. Las claves se guardan cifradas por destino." } } } },
                 new TabItem { Header = "Grabación", Content = Form(("Carpeta", folderRow), ("Formato", container), ("Codificador", recEnc), ("Bitrate de video (kb/s)", recVideo)) },
                 new TabItem { Header = "Video", Content = new StackPanel { Children = {
                     Form(("Ancho del lienzo", width), ("Alto del lienzo", height), ("FPS", fps)),
@@ -414,7 +413,6 @@ public static class StudioDialogs
             int I(NumericUpDown n) => (int)(n.Value ?? 0);
             var stream = project.Stream with
             {
-                Server = server.Text ?? string.Empty,
                 Encoder = new EncoderSettings(encoderIds[Math.Max(0, streamEnc.SelectedIndex)], I(streamVideo), I(streamAudio), I(keyframe)),
             };
             var recording = new RecordingPreferences(folder.Text?.Trim() ?? string.Empty, container.SelectedItem as string ?? "mkv",
@@ -425,8 +423,6 @@ public static class StudioDialogs
                 error.Text = result.Error;
                 return;
             }
-            if (!string.IsNullOrEmpty(key.Text))
-                await vm.Session.SetStreamKeyAsync(key.Text);
 
             var canvas = new CanvasSettings(I(width), I(height), fps.SelectedItem is int f ? f : 30);
             if (canvas != project.Canvas)

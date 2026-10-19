@@ -75,6 +75,7 @@
           </MenuItem>
           <MenuItem Header="_Perfil">
             <MenuItem Header="{Binding CanvasText}" IsEnabled="False" />
+            <MenuItem Header="Destinos de emisión (multistream)…" Click="OnDestinations" />
             <MenuItem Header="Ajustes de transmisión, grabación y video…" Click="OnSettings" />
           </MenuItem>
           <MenuItem Header="_Herramientas">
@@ -571,6 +572,7 @@
                   <TextBlock Text="Salir del modo estudio" IsVisible="{Binding StudioMode}" />
                 </Panel>
               </Button>
+              <Button Classes="control" Content="Destinos" Click="OnDestinations" AutomationProperties.Name="Destinos de emisión" />
               <Button Classes="control" Content="Ajustes" Click="OnSettings" />
             </StackPanel>
           </DockPanel>

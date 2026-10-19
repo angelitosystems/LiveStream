@@ -1,6 +1,6 @@
 # Estado real del proyecto
 
-Actualizado al cierre de la **Fase 5 — Optimización**. Solo se marca como hecho lo verificado contra libobs real
+Actualizado al cierre de la **Fase 6 — Multistream**. Solo se marca como hecho lo verificado contra libobs real
 en esta máquina (i7-13650HX, Intel UHD + RTX 4050 Laptop, Windows 11, pantalla al 125 %).
 
 ## Fase 1 — Motor (completada)
@@ -90,6 +90,29 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 | Asistente | Herramienta `get_performance_report` (solo lectura): explica el rendimiento; las decisiones las toma el controlador o el usuario | Prueba del catálogo |
 | Adaptador por equipo | `%APPDATA%\StreamPilot\machine.json`; si libobs no arranca con el adaptador elegido, se vuelve solo al 0 para el siguiente inicio | Prueba unitaria (archivo dañado) + reinicio real |
 
+## Fase 6 — Multistream (completada, con las limitaciones de abajo)
+
+| Área | Implementado | Verificación |
+|---|---|---|
+| Puente ABI v6 | Una salida RTMP/RTMPS por destino; los destinos con los mismos ajustes comparten codificador (referencias débiles: desaparece cuando no lo usa nadie); estadísticas por destino (activo, reconectando, perdidos, bytes, congestión, bitrate, último código de error); cambio de bitrate por destino; métricas agregadas; la API de una sola emisión sigue funcionando | Integración con dos servidores RTMP locales (ffmpeg): dos destinos a la vez con codificador compartido; al caer un servidor, ese destino reconecta y el otro sigue; al volver, reconexión automática y envío de datos |
+| Destinos | YouTube, Twitch, Facebook, Kick, TikTok, relay propio y RTMP personalizado, con ayuda por plataforma, servidores por defecto donde la plataforma los publica, RTMPS obligatorio en Facebook y límite de 6000 kb/s en Twitch. TikTok se marca como sujeto a elegibilidad | Pruebas unitarias |
+| Credenciales | Una clave por destino, cifrada con DPAPI y separada de las demás (también la del relay); nunca en el proyecto ni en los registros | Prueba de la app: claves fuera del `.spproj` y del registro |
+| Inicio y parada | «Iniciar transmisión» arranca todos los destinos marcados; si uno falla, los demás siguen y se informa por destino. Inicio, parada y edición por destino; no se puede borrar un destino en directo | Pruebas unitarias + app real |
+| Supervisión | Estado por destino (conectando, en directo, reconectando, caído con motivo legible), bitrate real medido, pérdidas, tiempo en directo, número de reconexiones y registro de eventos | Pruebas unitarias + app real: caída y reconexión vistas en el panel |
+| Bitrate adaptativo | Un controlador por grupo de destinos que comparten codificador (cifras sumadas, peor congestión) | Pruebas unitarias |
+| Prueba de conexión | Conexión TCP al servidor (sin emitir ni enviar la clave) con diagnóstico de DNS, rechazo o tiempo agotado | Manual |
+| Migración | Proyectos v3 con un servidor único pasan a un destino «Principal» con la misma credencial (sin volver a pedir la clave) | Prueba unitaria |
+| Asistente | Ve nombre, plataforma y estado de cada destino (nunca servidor ni clave) y puede iniciar o detener uno, siempre con confirmación | Pruebas del catálogo |
+
+### Fallos encontrados y corregidos en la Fase 6
+
+1. **Doble inicio durante la conexión**: libobs no marca la salida como activa mientras conecta; un segundo inicio
+   liberaba una salida en plena conexión. Ahora el puente lleva su propio estado «iniciada».
+2. **Registro de destinos invisible**: los eventos normales tenían el color de texto anulado. Corregido; la corrección
+   no se ha vuelto a comprobar visualmente.
+3. **Pruebas con ffmpeg de Chocolatey**: `ffmpeg.exe` es un lanzador; matar solo ese proceso dejaba vivo el servidor.
+   Las pruebas cierran ahora el árbol completo de procesos.
+
 ## Limitaciones conocidas (reales, no simuladas)
 
 - **Paneles acoplables**: son redimensionables y se pueden restaurar, pero no se pueden arrastrar a otra posición ni
@@ -124,12 +147,18 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
   no se ha probado con pérdidas de red reales (no hay forma de saturar la red de forma controlada en este equipo).
 - **Benchmark**: mide con la escena de programa actual; con una escena ligera todos los codificadores salen sanos.
   No mide la subida de red (no hay prueba de ancho de banda) y solo prueba H.264.
-- **Transmisión** no probada contra YouTube/Twitch/etc. por falta de credenciales; la ruta RTMP es la estándar de libobs.
+- **Transmisión** no probada contra YouTube/Twitch/etc. por falta de credenciales; multistream, caídas y reconexión
+  verificados con servidores RTMP locales (ffmpeg). La ruta RTMP es la estándar de libobs.
+- **Relay SRS/MediaMTX**: el relay se configura como un destino con su propia credencial, pero no se ha probado contra
+  SRS ni MediaMTX reales (no están instalados). No se generan configuraciones para ellos.
+- **Multistream con resoluciones distintas** (p. ej. horizontal a una plataforma y vertical a otra): no soportado; todos
+  los destinos emiten el mismo lienzo. Cada destino puede tener su propio codificador y bitrate.
+- **Límites de plataformas**: solo se aplican los documentados con certeza (RTMPS en Facebook, 6000 kb/s en Twitch).
 - **Licencia**: libobs es GPLv2+. Hay que decidir el modelo de distribución con asesoría legal antes de vender.
 
 ## Pendiente
 
-- **Fases 6–7** — Multistream, calidad y distribución.
+- **Fase 7** — Calidad y distribución.
 
 ## Cómo ejecutar y verificar
 

@@ -35,7 +35,7 @@
 extern "C" {
 #endif
 
-#define SP_ABI_VERSION 5u
+#define SP_ABI_VERSION 6u
 
 typedef enum sp_result {
     SP_OK = 0,
@@ -256,6 +256,33 @@ SP_API sp_result SP_CALL sp_recording_start(sp_engine *engine, const sp_recordin
 SP_API sp_result SP_CALL sp_recording_stop(sp_engine *engine);
 SP_API sp_result SP_CALL sp_stream_start(sp_engine *engine, const sp_stream_config *config);
 SP_API sp_result SP_CALL sp_stream_stop(sp_engine *engine);
+/* ---- Multistream (v6) -----------------------------------------------------------------------------
+ * Varias emisiones simultáneas, una por destino (dest_id libre, p. ej. un GUID). Los destinos con los mismos
+ * ajustes de codificación comparten codificador: emitir a varias plataformas no multiplica el trabajo.
+ * sp_stream_start/stop/set_video_bitrate y las métricas agregadas siguen funcionando (destino "default"). */
+typedef struct sp_stream_stats {
+    int32_t active;
+    int32_t reconnecting;
+    uint32_t dropped_frames;
+    uint32_t total_frames;
+    uint64_t total_bytes;
+    float congestion;
+    uint32_t video_bitrate_kbps;
+    int32_t dynamic_bitrate;
+    int32_t last_stop_code; /* 0 = sin error; códigos OBS_OUTPUT_* */
+    int32_t shared_encoder; /* 1 si el codificador lo usa también otro destino */
+    uint32_t connect_time_ms;
+} sp_stream_stats;
+SP_API sp_result SP_CALL sp_stream_start_dest(sp_engine *engine, const char *dest_id, const sp_stream_config *config);
+SP_API sp_result SP_CALL sp_stream_stop_dest(sp_engine *engine, const char *dest_id);
+/* Destino desconocido: SP_ERR_NOT_FOUND. Si la salida se cae sola conserva cifras y código hasta el siguiente
+ * inicio; tras sp_stream_stop_dest solo conserva el código. */
+SP_API sp_result SP_CALL sp_stream_get_stats(sp_engine *engine, const char *dest_id, sp_stream_stats *stats);
+SP_API sp_result SP_CALL sp_stream_last_error(sp_engine *engine, const char *dest_id, char *buffer, int32_t buffer_size,
+                                              int32_t *required);
+/* Cambia el bitrate del codificador del destino (afecta a los destinos que lo comparten). */
+SP_API sp_result SP_CALL sp_stream_set_video_bitrate_dest(sp_engine *engine, const char *dest_id, uint32_t kbps);
+
 /* Cambia el bitrate de video de la emisión en curso sin cortarla. Solo si el encoder declara
  * OBS_ENCODER_CAP_DYN_BITRATE; si no, SP_ERR_INVALID_STATE. */
 SP_API sp_result SP_CALL sp_stream_set_video_bitrate(sp_engine *engine, uint32_t kbps);

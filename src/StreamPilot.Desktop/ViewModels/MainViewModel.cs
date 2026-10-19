@@ -11,6 +11,7 @@ using StreamPilot.Application.Graphics;
 using StreamPilot.Application.Optimization;
 using StreamPilot.Application.Scenes;
 using StreamPilot.Application.Sources;
+using StreamPilot.Application.Streaming;
 using StreamPilot.Application.Studio;
 using StreamPilot.Desktop.Services;
 using StreamPilot.Domain.Entities;
@@ -751,7 +752,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
                 await Dialogs.InfoAsync("Transmisión", problem);
                 return;
             }
-            if (await Dialogs.ConfirmAsync("Iniciar transmisión", $"Se emitirá en directo a {MaskServer(Project.Stream.Server)}. ¿Continuar?", "Transmitir"))
+            var names = string.Join(", ", Session.EnabledDestinations.Select(d => d.Name));
+            if (await Dialogs.ConfirmAsync("Iniciar transmisión", $"Se emitirá en directo a: {names}. ¿Continuar?", "Transmitir"))
                 await StartStreamAsync(CancellationToken.None);
         }
         catch (Exception ex)
@@ -796,7 +798,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         if (!EngineReady)
             throw new InvalidOperationException("El motor no está iniciado.");
         await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = "Conectando…");
-        await Session.StartStreamAsync(ct);
+        var results = await Session.StartStreamAsync(ct);
+        var failed = results.Where(r => r.Error is not null).ToList();
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             _streamClock.Restart();
@@ -804,14 +807,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
             _lastStreamSample = DateTime.UtcNow;
             _wasStreaming = true;
             IsStreaming = true;
-            StatusMessage = "Transmisión iniciada.";
+            StatusMessage = failed.Count == 0
+                ? $"Transmisión iniciada ({results.Count} destino{(results.Count == 1 ? "" : "s")})."
+                : $"Transmisión iniciada; no arrancaron: {string.Join("; ", failed.Select(f => f.Error))}";
         });
     }
 
     public async Task StopStreamAsync(CancellationToken ct)
     {
         await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = "Deteniendo transmisión…");
-        await Engine.StopStreamAsync(ct);
+        await Session.StopStreamAsync(ct);
         await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = "Transmisión detenida.");
     }
 
@@ -842,8 +847,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         });
     }
 
-    private static string MaskServer(string server) => server.Length > 60 ? server[..60] + "…" : server;
-
     private async Task PollMetricsAsync()
     {
         if (!EngineReady)
@@ -851,7 +854,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         try
         {
             var m = await Engine.GetMetricsAsync(CancellationToken.None);
-            await Optimizer.TickAsync(m, DateTime.UtcNow);
+            await Session.Destinations.TickAsync(DateTime.UtcNow);
+            await Optimizer.TickAsync(m, DateTime.UtcNow, Session.Destinations.Statuses);
             FpsText = $"{m.ActiveFps:0.00} FPS";
             CpuText = $"CPU {m.CpuUsagePercent:0.0}%";
             MemoryText = $"{m.MemoryBytes / 1048576} MB";
@@ -873,19 +877,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
                 DroppedText = $"Perdidos {m.StreamDroppedFrames} ({pct:0.0}%)";
                 StreamTime = _streamClock.Elapsed.ToString(@"hh\:mm\:ss");
             }
-            IsStreaming = m.IsStreaming;
+            // Mientras un destino conecta, libobs aún no lo da por activo: cuenta como emisión en curso.
+            var live = m.IsStreaming || Session.Destinations.AnyLive;
+            IsStreaming = live;
 
-            // La conexión puede caer sola (red, clave inválida): se informa con el motivo real.
-            if (_wasStreaming && !m.IsStreaming)
+            // Todos los destinos cayeron solos (red, clave inválida): se informa con el motivo real de cada uno.
+            if (_wasStreaming && !live)
             {
                 _wasStreaming = false;
                 _streamClock.Reset();
                 BitrateText = "0 kb/s";
-                var stop = await Engine.GetLastStopAsync(OutputKind.Stream, CancellationToken.None);
-                if (stop.IsError)
+                var failures = Session.Destinations.Statuses.Where(s => s.Error is not null).Select(s => $"{s.Name}: {s.Error}").ToList();
+                if (failures.Count > 0)
                 {
-                    StatusMessage = OutputErrors.Describe(stop);
-                    await Dialogs.InfoAsync("La transmisión se detuvo", OutputErrors.Describe(stop));
+                    StatusMessage = string.Join(" · ", failures);
+                    await Dialogs.InfoAsync("La transmisión se detuvo", string.Join("\n\n", failures));
                 }
             }
         }
@@ -969,26 +975,5 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         _metricsTimer.Stop();
         _meterTimer.Stop();
         await Session.DisposeAsync();
-    }
-}
-
-/// <summary>Mensajes legibles para los códigos de detención de salidas de libobs (OBS_OUTPUT_*).</summary>
-public static class OutputErrors
-{
-    public static string Describe(OutputStopInfo stop)
-    {
-        var reason = stop.Code switch
-        {
-            -1 => "Ruta o URL de servidor inválida.",
-            -2 => "No se pudo conectar con el servidor. Revisa la URL, el firewall y tu conexión.",
-            -3 => "El servidor rechazó la transmisión. Revisa que la clave de transmisión sea correcta y esté activa.",
-            -4 => "Error de la salida.",
-            -5 => "Se perdió la conexión con el servidor y no se pudo recuperar.",
-            -6 => "El servidor no admite la configuración enviada (códec o formato).",
-            -7 => "No queda espacio en disco.",
-            -8 => "Error del codificador. Prueba otro codificador o un bitrate menor.",
-            _ => $"Error desconocido ({stop.Code}).",
-        };
-        return string.IsNullOrWhiteSpace(stop.Message) ? reason : $"{reason} Detalle: {stop.Message}";
     }
 }

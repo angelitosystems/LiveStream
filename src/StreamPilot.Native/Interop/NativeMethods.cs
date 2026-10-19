@@ -8,7 +8,7 @@ namespace StreamPilot.Native.Interop;
 internal static unsafe partial class NativeMethods
 {
     public const string Library = "streampilot_bridge";
-    public const uint ExpectedAbiVersion = 5;
+    public const uint ExpectedAbiVersion = 6;
 
     // ---- General
     [LibraryImport(Library, EntryPoint = "sp_abi_version"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -162,6 +162,21 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(Library, EntryPoint = "sp_adapters_enumerate"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial SpResult AdaptersEnumerate(delegate* unmanaged[Cdecl]<uint, byte*, uint, ulong, int, nint, void> callback, nint userData);
+
+    [LibraryImport(Library, EntryPoint = "sp_stream_start_dest", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult StreamStartDest(EngineSafeHandle engine, string destId, in SpStreamConfig config);
+
+    [LibraryImport(Library, EntryPoint = "sp_stream_stop_dest", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult StreamStopDest(EngineSafeHandle engine, string destId);
+
+    [LibraryImport(Library, EntryPoint = "sp_stream_get_stats", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult StreamGetStats(EngineSafeHandle engine, string destId, out SpStreamStats stats);
+
+    [LibraryImport(Library, EntryPoint = "sp_stream_last_error", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult StreamLastError(EngineSafeHandle engine, string destId, byte* buffer, int bufferSize, out int required);
+
+    [LibraryImport(Library, EntryPoint = "sp_stream_set_video_bitrate_dest", StringMarshalling = StringMarshalling.Utf8), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial SpResult StreamSetVideoBitrateDest(EngineSafeHandle engine, string destId, uint kbps);
 
     [LibraryImport(Library, EntryPoint = "sp_stream_stop"), UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     public static partial SpResult StreamStop(EngineSafeHandle engine);

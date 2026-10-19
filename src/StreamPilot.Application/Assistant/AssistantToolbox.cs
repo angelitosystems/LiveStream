@@ -402,7 +402,40 @@ public sealed class AssistantToolbox
                 await _outputs.StopRecordingAsync(ct);
                 return Ok("Grabación detenida y guardada.", "Detuvo la grabación");
             });
-        Add("start_streaming", "Empieza la transmisión en directo al destino configurado por el usuario. Pide confirmación al usuario.",
+        Add("start_destination", "Empieza a emitir a un solo destino (por nombre) sin tocar los demás. Pide confirmación al usuario.",
+            Object(("destination", Str("Nombre del destino."), true)), ToolPermission.Confirm,
+            async (a, ct) =>
+            {
+                var d = Resolve(a.Str("destination"), Project.Destinations, x => x.Id, x => x.Name, "destino");
+                if (_session.Destinations.IsLive(d.Id))
+                    return Ok($"«{d.Name}» ya está emitiendo.", $"Comprobó que «{d.Name}» ya emite");
+                if (await _session.ValidateDestinationAsync(d, ct) is { } problem)
+                    throw new ToolException(problem);
+                if (!await Ask("Emitir a un destino", $"El asistente quiere empezar a emitir en directo a «{d.Name}».", "Transmitir"))
+                    return Declined($"emitir a «{d.Name}»");
+                try
+                {
+                    await _session.StartDestinationAsync(d.Id, ct);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    throw new ToolException(ex.Message);
+                }
+                return Ok($"Conectando con «{d.Name}». Consulta get_studio_state en unos segundos para ver si está en directo.", $"Inició la emisión a «{d.Name}»");
+            });
+        Add("stop_destination", "Deja de emitir a un solo destino; los demás siguen. Pide confirmación al usuario.",
+            Object(("destination", Str("Nombre del destino."), true)), ToolPermission.Confirm,
+            async (a, ct) =>
+            {
+                var d = Resolve(a.Str("destination"), Project.Destinations, x => x.Id, x => x.Name, "destino");
+                if (!_session.Destinations.IsLive(d.Id))
+                    return Ok($"«{d.Name}» no está emitiendo.", $"Comprobó que «{d.Name}» no emite");
+                if (!await Ask("Detener destino", $"El asistente quiere dejar de emitir a «{d.Name}». El resto de destinos sigue.", "Detener"))
+                    return Declined($"detener «{d.Name}»");
+                await _session.StopDestinationAsync(d.Id, ct);
+                return Ok($"Emisión a «{d.Name}» detenida.", $"Detuvo la emisión a «{d.Name}»");
+            });
+        Add("start_streaming", "Empieza la transmisión en directo a todos los destinos activados por el usuario. Pide confirmación al usuario.",
             Object(), ToolPermission.Confirm,
             async (_, ct) =>
             {
@@ -613,6 +646,20 @@ public sealed class AssistantToolbox
                     ["muted"] = s.Muted,
                     ["filters"] = new JsonArray(s.Filters.Select(f => (JsonNode)$"{f.Name}{(f.Enabled ? "" : " (desactivado)")}").ToArray()),
                 }).ToArray()),
+            // Sin servidores ni credenciales: solo nombre, plataforma y estado.
+            ["destinations"] = new JsonArray(p.Destinations.Select(d =>
+            {
+                var status = _session.Destinations.Statuses.FirstOrDefault(s => s.Id == d.Id);
+                return (JsonNode)new JsonObject
+                {
+                    ["name"] = d.Name,
+                    ["platform"] = d.Platform.ToString(),
+                    ["enabled"] = d.Enabled,
+                    ["state"] = (status?.State ?? Streaming.DestinationState.Idle).ToString(),
+                    ["kbps"] = status?.MeasuredKbps ?? 0,
+                    ["error"] = status?.Error,
+                };
+            }).ToArray()),
             ["graphics"] = new JsonArray(p.Graphics.Select(g => (JsonNode)new JsonObject
             {
                 ["name"] = g.Name,

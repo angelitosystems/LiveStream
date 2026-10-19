@@ -218,10 +218,14 @@ struct output_set {
     std::mutex stop_mutex;
     int32_t last_stop_code = 0;
     std::string last_stop_message;
+    /// Iniciada y aún no detenida. obs_output_active es falso mientras una emisión conecta: sin esta marca, un
+    /// segundo inicio liberaría una salida en plena conexión.
+    std::atomic<bool> started{false};
 
     static void on_stop(void *param, calldata_t *data)
     {
         auto *self = static_cast<output_set *>(param);
+        self->started = false;
         const auto code = static_cast<int32_t>(calldata_int(data, "code"));
         const char *error = self->output ? obs_output_get_last_error(self->output) : nullptr;
         std::lock_guard lock(self->stop_mutex);
@@ -231,10 +235,13 @@ struct output_set {
 
     bool active() const { return output && obs_output_active(output); }
 
+    bool running() const { return output && (started || obs_output_active(output)); }
+
     void release()
     {
         if (output)
             signal_handler_disconnect(obs_output_get_signal_handler(output), "stop", on_stop, this);
+        started = false;
         obs_output_release(output);
         obs_encoder_release(video_encoder);
         obs_encoder_release(audio_encoder);
@@ -555,7 +562,23 @@ struct sp_engine {
     obs_source_t *program_scene = nullptr; // referencia débil: la propiedad está en scenes
 
     output_set recording;
-    output_set stream;
+    std::map<std::string, std::unique_ptr<output_set>> streams; // por destino
+    std::map<std::string, std::pair<obs_weak_encoder_t *, obs_weak_encoder_t *>> shared_encoders; // ajustes -> video, audio
+
+    output_set *find_stream(const char *id)
+    {
+        const auto it = streams.find(id ? id : "");
+        return it == streams.end() ? nullptr : it->second.get();
+    }
+
+    /// Destino activo "por defecto" para la API de una sola emisión y para las métricas agregadas.
+    output_set *first_active_stream()
+    {
+        for (auto &[id, set] : streams)
+            if (set->active())
+                return set.get();
+        return nullptr;
+    }
 
     os_cpu_usage_info_t *cpu = nullptr;
     uint32_t adapter_index = 0;
@@ -731,23 +754,24 @@ sp_result start_output(sp_engine *engine, output_set &set, const char *output_ty
         set.release();
         return fail(SP_ERR_OUTPUT_FAILED, message);
     }
+    set.started = true;
     (void)engine;
     return SP_OK;
 }
 
 sp_result stop_output(output_set &set, const char *what)
 {
-    if (!set.active())
+    if (!set.running())
         return fail(SP_ERR_INVALID_STATE, std::string("No hay ") + what + " activa.");
 
     // obs_output_stop es asíncrono: espera a que el muxer o la conexión terminen.
     obs_output_stop(set.output);
     using namespace std::chrono;
     const auto deadline = steady_clock::now() + seconds(10);
-    while (set.active() && steady_clock::now() < deadline)
+    while (set.running() && steady_clock::now() < deadline)
         std::this_thread::sleep_for(milliseconds(50));
 
-    if (set.active()) {
+    if (set.running()) {
         obs_output_force_stop(set.output);
         set.release();
         return fail(SP_ERR_OUTPUT_FAILED, std::string("La ") + what + " no se detuvo a tiempo; se forzó la parada.");
@@ -973,9 +997,17 @@ void SP_CALL sp_engine_destroy(sp_engine *engine)
         if (engine->recording.active())
             obs_output_force_stop(engine->recording.output);
         engine->recording.release();
-        if (engine->stream.active())
-            obs_output_force_stop(engine->stream.output);
-        engine->stream.release();
+        for (auto &[id, set] : engine->streams) {
+            if (set->active())
+                obs_output_force_stop(set->output);
+            set->release();
+        }
+        engine->streams.clear();
+        for (auto &[key, weak] : engine->shared_encoders) {
+            obs_weak_encoder_release(weak.first);
+            obs_weak_encoder_release(weak.second);
+        }
+        engine->shared_encoders.clear();
 
         // Igual que el cierre de OBS Studio: quitar las salidas globales, retirar escenas (lo que suelta
         // sus elementos) y fuentes, y esperar a que los hilos de audio/video y la cola de destrucción
@@ -1035,26 +1067,33 @@ sp_result SP_CALL sp_metrics_get(sp_engine *engine, sp_metrics *m)
         m->skipped_encoder_frames = video_output_get_skipped_frames(video);
         m->encoded_frames = video_output_get_total_frames(video);
         m->is_recording = engine->recording.active() ? 1 : 0;
-        m->is_streaming = engine->stream.active() ? 1 : 0;
         if (engine->recording.output)
             m->recording_total_bytes = obs_output_get_total_bytes(engine->recording.output);
         m->render_adapter_index = engine->adapter_index;
-        if (engine->stream.active()) {
-            m->stream_congestion = obs_output_get_congestion(engine->stream.output);
-            if (engine->stream.video_encoder) {
-                obs_data_t *s = obs_encoder_get_settings(engine->stream.video_encoder);
-                m->stream_video_bitrate_kbps = static_cast<uint32_t>(obs_data_get_int(s, "bitrate"));
-                obs_data_release(s);
-                m->stream_dynamic_bitrate =
-                    (obs_get_encoder_caps(obs_encoder_get_id(engine->stream.video_encoder)) & OBS_ENCODER_CAP_DYN_BITRATE) ? 1 : 0;
+        // Emisión agregada sobre todos los destinos: suma de contadores y la peor congestión.
+        bool all_dynamic = true;
+        for (auto &[id, set] : engine->streams) {
+            if (!set->output)
+                continue;
+            m->stream_dropped_frames += static_cast<uint32_t>(obs_output_get_frames_dropped(set->output));
+            m->stream_total_frames += static_cast<uint32_t>(obs_output_get_total_frames(set->output));
+            m->stream_total_bytes += obs_output_get_total_bytes(set->output);
+            if (!set->active())
+                continue;
+            m->is_streaming = 1;
+            if (obs_output_reconnecting(set->output))
+                m->stream_reconnecting = 1;
+            m->stream_congestion = std::max(m->stream_congestion, obs_output_get_congestion(set->output));
+            if (set->video_encoder) {
+                if (m->stream_video_bitrate_kbps == 0) {
+                    obs_data_t *s = obs_encoder_get_settings(set->video_encoder);
+                    m->stream_video_bitrate_kbps = static_cast<uint32_t>(obs_data_get_int(s, "bitrate"));
+                    obs_data_release(s);
+                }
+                all_dynamic &= (obs_get_encoder_caps(obs_encoder_get_id(set->video_encoder)) & OBS_ENCODER_CAP_DYN_BITRATE) != 0;
             }
         }
-        if (engine->stream.output) {
-            m->stream_reconnecting = obs_output_reconnecting(engine->stream.output) ? 1 : 0;
-            m->stream_dropped_frames = static_cast<uint32_t>(obs_output_get_frames_dropped(engine->stream.output));
-            m->stream_total_frames = static_cast<uint32_t>(obs_output_get_total_frames(engine->stream.output));
-            m->stream_total_bytes = obs_output_get_total_bytes(engine->stream.output);
-        }
+        m->stream_dynamic_bitrate = m->is_streaming && all_dynamic ? 1 : 0;
         return SP_OK;
     });
 }
@@ -1699,38 +1738,12 @@ sp_result SP_CALL sp_recording_stop(sp_engine *engine)
 
 sp_result SP_CALL sp_stream_start(sp_engine *engine, const sp_stream_config *config)
 {
-    return guarded([&]() -> sp_result {
-        SP_REQUIRE(engine && config && config->server && config->key, "engine, server y key son obligatorios.");
-        SP_REQUIRE(std::strncmp(config->server, "rtmp://", 7) == 0 || std::strncmp(config->server, "rtmps://", 8) == 0,
-                   "El servidor debe empezar por rtmp:// o rtmps://.");
-        if (engine->stream.active())
-            return fail(SP_ERR_INVALID_STATE, "Ya hay una transmisión activa.");
-        engine->stream.release();
-
-        obs_data_t *service_settings = obs_data_create();
-        obs_data_set_string(service_settings, "server", config->server);
-        obs_data_set_string(service_settings, "key", config->key);
-        obs_service_t *service = obs_service_create("rtmp_custom", "sp_service", service_settings, nullptr);
-        obs_data_release(service_settings);
-        if (!service)
-            return fail(SP_ERR_CREATE_FAILED, "No se pudo crear el servicio RTMP.");
-
-        obs_data_t *settings = obs_data_create();
-        const sp_result rc =
-            start_output(engine, engine->stream, "rtmp_output", "sp_stream", config->encoder, settings, service);
-        obs_data_release(settings);
-        if (rc == SP_OK)
-            obs_output_set_reconnect_settings(engine->stream.output, 20, 5);
-        return rc;
-    });
+    return sp_stream_start_dest(engine, "default", config);
 }
 
 sp_result SP_CALL sp_stream_stop(sp_engine *engine)
 {
-    return guarded([&]() -> sp_result {
-        SP_REQUIRE(engine, "engine es obligatorio.");
-        return stop_output(engine->stream, "transmisión");
-    });
+    return sp_stream_stop_dest(engine, "default");
 }
 
 sp_result SP_CALL sp_output_last_stop(sp_engine *engine, sp_output_kind kind, int32_t *code, char *buffer,
@@ -1738,7 +1751,12 @@ sp_result SP_CALL sp_output_last_stop(sp_engine *engine, sp_output_kind kind, in
 {
     return guarded([&]() -> sp_result {
         SP_REQUIRE(engine && code, "engine y code son obligatorios.");
-        output_set &set = kind == SP_OUTPUT_STREAM ? engine->stream : engine->recording;
+        output_set *stream = engine->find_stream("default");
+        if (kind == SP_OUTPUT_STREAM && !stream) {
+            *code = 0;
+            return copy_out("", buffer, buffer_size, required);
+        }
+        output_set &set = kind == SP_OUTPUT_STREAM ? *stream : engine->recording;
         std::string message;
         {
             std::lock_guard lock(set.stop_mutex);
@@ -2112,9 +2130,10 @@ sp_result SP_CALL sp_stream_set_video_bitrate(sp_engine *engine, uint32_t kbps)
     return guarded([&]() -> sp_result {
         SP_REQUIRE(engine, "engine es obligatorio.");
         SP_REQUIRE(kbps >= 200 && kbps <= 150000, "Bitrate fuera de rango (200..150000 kb/s).");
-        if (!engine->stream.active() || !engine->stream.video_encoder)
+        output_set *set = engine->first_active_stream();
+        if (!set || !set->video_encoder)
             return fail(SP_ERR_INVALID_STATE, "No hay ninguna transmisión activa.");
-        obs_encoder_t *encoder = engine->stream.video_encoder;
+        obs_encoder_t *encoder = set->video_encoder;
         if (!(obs_get_encoder_caps(obs_encoder_get_id(encoder)) & OBS_ENCODER_CAP_DYN_BITRATE))
             return fail(SP_ERR_INVALID_STATE, "El codificador de la emisión no admite cambiar el bitrate en directo.");
         obs_data_t *settings = obs_data_create();
@@ -2155,6 +2174,202 @@ sp_result SP_CALL sp_adapters_enumerate(sp_adapter_callback callback, void *user
             adapter->Release();
         }
         factory->Release();
+        return SP_OK;
+    });
+}
+
+// ---- Multistream --------------------------------------------------------------------------------
+
+namespace {
+
+/// Codificadores compartidos: mismo id y bitrates -> mismas instancias. El mapa guarda referencias débiles; cada
+/// salida tiene una fuerte, así el codificador desaparece cuando ya no lo usa ningún destino.
+bool shared_stream_encoders(sp_engine *engine, const sp_encoder_config &enc, obs_service_t *service, obs_encoder_t *&venc,
+                            obs_encoder_t *&aenc, bool &shared)
+{
+    const char *encoder_id = pick_video_encoder(enc.video_encoder_id);
+    if (!encoder_id)
+        return false;
+    const std::string key = std::string(encoder_id) + "|" + std::to_string(enc.video_bitrate_kbps) + "|" +
+                            std::to_string(enc.keyframe_interval_sec) + "|" + std::to_string(enc.audio_bitrate_kbps);
+    auto &slot = engine->shared_encoders[key];
+    venc = slot.first ? obs_weak_encoder_get_encoder(slot.first) : nullptr;
+    aenc = slot.second ? obs_weak_encoder_get_encoder(slot.second) : nullptr;
+    if (venc && aenc) {
+        shared = true;
+        return true;
+    }
+    obs_encoder_release(venc);
+    obs_encoder_release(aenc);
+    shared = false;
+
+    obs_data_t *vs = obs_data_create();
+    obs_data_set_string(vs, "rate_control", "CBR");
+    obs_data_set_int(vs, "bitrate", enc.video_bitrate_kbps ? enc.video_bitrate_kbps : 6000);
+    if (enc.keyframe_interval_sec)
+        obs_data_set_int(vs, "keyint_sec", enc.keyframe_interval_sec);
+    obs_data_t *as = obs_data_create();
+    obs_data_set_int(as, "bitrate", enc.audio_bitrate_kbps ? enc.audio_bitrate_kbps : 160);
+    obs_service_apply_encoder_settings(service, vs, as);
+    const std::string name = "sp_stream_enc_" + std::to_string(engine->shared_encoders.size());
+    venc = obs_video_encoder_create(encoder_id, (name + "_video").c_str(), vs, nullptr);
+    aenc = obs_audio_encoder_create("ffmpeg_aac", (name + "_audio").c_str(), as, 0, nullptr);
+    obs_data_release(vs);
+    obs_data_release(as);
+    if (!venc || !aenc) {
+        obs_encoder_release(venc);
+        obs_encoder_release(aenc);
+        venc = aenc = nullptr;
+        return false;
+    }
+    obs_encoder_set_video(venc, obs_get_video());
+    obs_encoder_set_audio(aenc, obs_get_audio());
+    obs_weak_encoder_release(slot.first);
+    obs_weak_encoder_release(slot.second);
+    slot = {obs_encoder_get_weak_encoder(venc), obs_encoder_get_weak_encoder(aenc)};
+    return true;
+}
+
+bool encoder_shared_by_others(sp_engine *engine, const output_set *self)
+{
+    for (auto &[id, set] : engine->streams)
+        if (set.get() != self && set->active() && set->video_encoder == self->video_encoder)
+            return true;
+    return false;
+}
+
+} // namespace
+
+sp_result SP_CALL sp_stream_start_dest(sp_engine *engine, const char *dest_id, const sp_stream_config *config)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && dest_id && *dest_id && config && config->server && config->key,
+                   "engine, dest_id, server y key son obligatorios.");
+        SP_REQUIRE(std::strncmp(config->server, "rtmp://", 7) == 0 || std::strncmp(config->server, "rtmps://", 8) == 0,
+                   "El servidor debe empezar por rtmp:// o rtmps://.");
+        auto &slot = engine->streams[dest_id];
+        if (!slot)
+            slot = std::make_unique<output_set>();
+        output_set &set = *slot;
+        if (set.running())
+            return fail(SP_ERR_INVALID_STATE, "Ese destino ya está emitiendo o conectando.");
+        set.release();
+
+        obs_data_t *service_settings = obs_data_create();
+        obs_data_set_string(service_settings, "server", config->server);
+        obs_data_set_string(service_settings, "key", config->key);
+        const std::string name = std::string("sp_stream_") + dest_id;
+        set.service = obs_service_create("rtmp_custom", (name + "_service").c_str(), service_settings, nullptr);
+        obs_data_release(service_settings);
+        if (!set.service)
+            return fail(SP_ERR_CREATE_FAILED, "No se pudo crear el servicio RTMP.");
+
+        bool shared = false;
+        if (!shared_stream_encoders(engine, config->encoder, set.service, set.video_encoder, set.audio_encoder, shared)) {
+            set.release();
+            return fail(SP_ERR_CREATE_FAILED, "No se pudieron crear los codificadores de la emisión.");
+        }
+        set.output = obs_output_create("rtmp_output", name.c_str(), nullptr, nullptr);
+        if (!set.output) {
+            set.release();
+            return fail(SP_ERR_CREATE_FAILED, "No se pudo crear la salida RTMP.");
+        }
+        {
+            std::lock_guard lock(set.stop_mutex);
+            set.last_stop_code = 0;
+            set.last_stop_message.clear();
+        }
+        signal_handler_connect(obs_output_get_signal_handler(set.output), "stop", output_set::on_stop, &set);
+        obs_output_set_video_encoder(set.output, set.video_encoder);
+        obs_output_set_audio_encoder(set.output, set.audio_encoder, 0);
+        obs_output_set_service(set.output, set.service);
+        obs_output_set_reconnect_settings(set.output, 20, 5);
+        if (!obs_output_start(set.output)) {
+            const char *err = obs_output_get_last_error(set.output);
+            const std::string message = std::string("obs_output_start falló: ") + (err ? err : "sin detalle");
+            set.release();
+            return fail(SP_ERR_OUTPUT_FAILED, message);
+        }
+        set.started = true;
+        blog(LOG_INFO, "[streampilot] destino %s iniciado (%s codificador)", dest_id, shared ? "comparte" : "con nuevo");
+        return SP_OK;
+    });
+}
+
+sp_result SP_CALL sp_stream_stop_dest(sp_engine *engine, const char *dest_id)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && dest_id, "engine y dest_id son obligatorios.");
+        output_set *set = engine->find_stream(dest_id);
+        if (!set)
+            return fail(SP_ERR_INVALID_STATE, "Ese destino no está emitiendo.");
+        return stop_output(*set, "transmisión");
+    });
+}
+
+sp_result SP_CALL sp_stream_get_stats(sp_engine *engine, const char *dest_id, sp_stream_stats *stats)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && dest_id && stats, "engine, dest_id y stats son obligatorios.");
+        output_set *set = engine->find_stream(dest_id);
+        if (!set)
+            return fail(SP_ERR_NOT_FOUND, "Destino desconocido.");
+        *stats = {};
+        {
+            std::lock_guard lock(set->stop_mutex);
+            stats->last_stop_code = set->last_stop_code;
+        }
+        if (!set->output)
+            return SP_OK;
+        stats->active = set->active() ? 1 : 0;
+        stats->reconnecting = obs_output_reconnecting(set->output) ? 1 : 0;
+        stats->dropped_frames = static_cast<uint32_t>(obs_output_get_frames_dropped(set->output));
+        stats->total_frames = static_cast<uint32_t>(obs_output_get_total_frames(set->output));
+        stats->total_bytes = obs_output_get_total_bytes(set->output);
+        stats->congestion = obs_output_get_congestion(set->output);
+        stats->connect_time_ms = static_cast<uint32_t>(std::max(0, obs_output_get_connect_time_ms(set->output)));
+        if (set->video_encoder) {
+            obs_data_t *s = obs_encoder_get_settings(set->video_encoder);
+            stats->video_bitrate_kbps = static_cast<uint32_t>(obs_data_get_int(s, "bitrate"));
+            obs_data_release(s);
+            stats->dynamic_bitrate = (obs_get_encoder_caps(obs_encoder_get_id(set->video_encoder)) & OBS_ENCODER_CAP_DYN_BITRATE) ? 1 : 0;
+            stats->shared_encoder = encoder_shared_by_others(engine, set) ? 1 : 0;
+        }
+        return SP_OK;
+    });
+}
+
+sp_result SP_CALL sp_stream_last_error(sp_engine *engine, const char *dest_id, char *buffer, int32_t buffer_size,
+                                       int32_t *required)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && dest_id, "engine y dest_id son obligatorios.");
+        output_set *set = engine->find_stream(dest_id);
+        if (!set)
+            return fail(SP_ERR_NOT_FOUND, "Destino desconocido.");
+        std::string message;
+        {
+            std::lock_guard lock(set->stop_mutex);
+            message = set->last_stop_message;
+        }
+        return copy_out(message, buffer, buffer_size, required);
+    });
+}
+
+sp_result SP_CALL sp_stream_set_video_bitrate_dest(sp_engine *engine, const char *dest_id, uint32_t kbps)
+{
+    return guarded([&]() -> sp_result {
+        SP_REQUIRE(engine && dest_id, "engine y dest_id son obligatorios.");
+        SP_REQUIRE(kbps >= 200 && kbps <= 150000, "Bitrate fuera de rango (200..150000 kb/s).");
+        output_set *set = engine->find_stream(dest_id);
+        if (!set || !set->active() || !set->video_encoder)
+            return fail(SP_ERR_INVALID_STATE, "Ese destino no está emitiendo.");
+        if (!(obs_get_encoder_caps(obs_encoder_get_id(set->video_encoder)) & OBS_ENCODER_CAP_DYN_BITRATE))
+            return fail(SP_ERR_INVALID_STATE, "El codificador de este destino no admite cambiar el bitrate en directo.");
+        obs_data_t *settings = obs_data_create();
+        obs_data_set_int(settings, "bitrate", kbps);
+        obs_encoder_update(set->video_encoder, settings);
+        obs_data_release(settings);
         return SP_OK;
     });
 }

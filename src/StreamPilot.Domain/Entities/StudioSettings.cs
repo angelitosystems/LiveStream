@@ -32,8 +32,9 @@ public sealed record TransitionSettings(string TypeId = "fade_transition", int D
 public sealed record EncoderSettings(string VideoEncoderId = "auto", int VideoBitrateKbps = 6000, int AudioBitrateKbps = 160, int KeyframeIntervalSec = 2);
 
 /// <summary>
-/// Destino RTMP/RTMPS. La clave de transmisión NO se guarda en el proyecto: <see cref="CredentialName"/>
-/// apunta al almacén de secretos cifrado.
+/// Ajustes comunes de emisión: el codificador que usan los destinos sin codificador propio. Server y
+/// CredentialName son del esquema anterior a v4 (un solo destino); al abrir un proyecto antiguo se convierten en
+/// el destino «Principal».
 /// </summary>
 public sealed record StreamSettings(
     string Server = "",

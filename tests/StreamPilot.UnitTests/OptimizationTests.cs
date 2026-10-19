@@ -141,48 +141,92 @@ public sealed class OptimizationTests
         Assert.Null(ProfileAdvisor.Lighter(new CanvasSettings(1280, 720, 30)));
     }
 
+    /// <summary>Sesión con destinos ya emitiendo en el motor falso.</summary>
+    private static async Task<(StudioSession Session, FakeStreamingEngine Engine, string Dir, StreamDestination[] Destinations)> LiveAsync(
+        bool dynamic, params EncoderSettings?[] encoders)
+    {
+        var dir = Directory.CreateTempSubdirectory("sp-opt-").FullName;
+        var engine = new FakeStreamingEngine { DynamicBitrate = dynamic };
+        var session = new StudioSession(engine, new JsonProjectRepository(dir), new DpapiSecretStore(Path.Combine(dir, "s")),
+            StudioSession.CreateDefaultProject(), Path.Combine(dir, "p.spproj"), TimeSpan.FromHours(1));
+        var destinations = encoders.Select((e, i) => StreamDestination.Create($"D{i}", StreamPlatform.Custom, $"rtmp://srv{i}.example/app", e)).ToArray();
+        foreach (var d in destinations)
+        {
+            session.Project.InsertDestination(d);
+            await session.SetDestinationKeyAsync(d.Id, "k");
+        }
+        await session.StartStreamAsync();
+        return (session, engine, dir, destinations);
+    }
+
+    /// <summary>Un segundo de red: suma pérdidas y fotogramas a los destinos indicados.</summary>
+    private static void Network(FakeStreamingEngine engine, IEnumerable<StreamDestination> destinations, uint lost, double congestion)
+    {
+        foreach (var d in destinations)
+        {
+            var s = engine.Destinations[d.Id];
+            engine.Destinations[d.Id] = s with { DroppedFrames = s.DroppedFrames + lost, TotalFrames = s.TotalFrames + 60 - lost, Congestion = congestion };
+        }
+    }
+
+    private static EngineMetrics Metrics(int s) => new(60, 5, (uint)(s * 60), 0, 0, false, IsStreaming: true, EncodedFrames: (uint)(s * 60));
+
     [Fact]
     public async Task Optimizer_AdjustsLiveBitrate_LogsWhy_AndRestores()
     {
-        var dir = Directory.CreateTempSubdirectory("sp-opt-").FullName;
-        var engine = new FakeStreamingEngine();
-        await using var session = new StudioSession(engine, new JsonProjectRepository(dir), new DpapiSecretStore(Path.Combine(dir, "s")),
-            StudioSession.CreateDefaultProject(), Path.Combine(dir, "p.spproj"), TimeSpan.FromHours(1));
+        var (session, engine, dir, destinations) = await LiveAsync(dynamic: true, (EncoderSettings?)null);
+        await using var _ = session;
         var optimizer = new PerformanceOptimizer(session);
-
-        uint dropped = 0, total = 0;
-        var bitrate = 6000;
         for (var s = 0; s < 40; s++)
         {
-            dropped += 6;
-            total += 54;
-            var m = new EngineMetrics(60, 5, (uint)(s * 60), 0, 0, false, IsStreaming: true, StreamDroppedFrames: dropped, StreamTotalFrames: total,
-                StreamCongestion: 0.7, StreamVideoBitrateKbps: bitrate, StreamDynamicBitrate: true, EncodedFrames: (uint)(s * 60));
-            await optimizer.TickAsync(m, T0.AddSeconds(s));
-            bitrate = engine.BitrateChanges.Count > 0 ? engine.BitrateChanges[^1] : bitrate;
+            Network(engine, destinations, 6, 0.7);
+            await session.Destinations.TickAsync(T0.AddSeconds(s));
+            await optimizer.TickAsync(Metrics(s), T0.AddSeconds(s), session.Destinations.Statuses);
         }
         Assert.NotEmpty(engine.BitrateChanges);
         Assert.Contains(optimizer.Events, e => e.Kind == OptimizationEventKind.Adjusted && e.Detail.Contains("Pérdidas"));
         Assert.True(optimizer.Status.CurrentKbps < 6000);
         Assert.Contains("objetivo 6000", optimizer.Report());
 
-        await optimizer.RestoreTargetAsync();
+        await optimizer.RestoreTargetAsync(session.Destinations.Statuses);
         Assert.Equal(6000, engine.BitrateChanges[^1]);
         Assert.False(optimizer.AdaptiveEnabled);
         Directory.Delete(dir, recursive: true);
     }
 
     [Fact]
+    public async Task Optimizer_DecidesOncePerSharedEncoder_AndSeparatelyForOwnEncoders()
+    {
+        // D0 y D1 comparten el codificador común; D2 tiene uno propio. Solo D2 sufre pérdidas.
+        var (session, engine, dir, d) = await LiveAsync(dynamic: true, null, null, new EncoderSettings("obs_x264", 3000));
+        await using var _ = session;
+        var optimizer = new PerformanceOptimizer(session);
+        for (var s = 0; s < 40; s++)
+        {
+            Network(engine, d[..2], 0, 0.02);
+            Network(engine, [d[2]], 6, 0.7);
+            await session.Destinations.TickAsync(T0.AddSeconds(s));
+            await optimizer.TickAsync(Metrics(s), T0.AddSeconds(s), session.Destinations.Statuses);
+        }
+        Assert.Equal(6000, engine.Destinations[d[0].Id].VideoBitrateKbps);
+        Assert.Equal(6000, engine.Destinations[d[1].Id].VideoBitrateKbps);
+        Assert.True(engine.Destinations[d[2].Id].VideoBitrateKbps < 3000);
+        Assert.All(optimizer.Events.Where(e => e.Kind == OptimizationEventKind.Adjusted), e => Assert.Contains("D2", e.Title));
+        Directory.Delete(dir, recursive: true);
+    }
+
+    [Fact]
     public async Task Optimizer_WithoutDynamicBitrateEncoder_NeverTouchesTheStream()
     {
-        var dir = Directory.CreateTempSubdirectory("sp-opt-").FullName;
-        var engine = new FakeStreamingEngine();
-        await using var session = new StudioSession(engine, new JsonProjectRepository(dir), new DpapiSecretStore(Path.Combine(dir, "s")),
-            StudioSession.CreateDefaultProject(), Path.Combine(dir, "p.spproj"), TimeSpan.FromHours(1));
+        var (session, engine, dir, destinations) = await LiveAsync(dynamic: false, (EncoderSettings?)null);
+        await using var _ = session;
         var optimizer = new PerformanceOptimizer(session);
         for (var s = 0; s < 30; s++)
-            await optimizer.TickAsync(new EngineMetrics(60, 5, 0, 0, 0, false, IsStreaming: true, StreamDroppedFrames: (uint)(s * 10),
-                StreamTotalFrames: (uint)(s * 50), StreamCongestion: 0.9, StreamVideoBitrateKbps: 6000, StreamDynamicBitrate: false), T0.AddSeconds(s));
+        {
+            Network(engine, destinations, 10, 0.9);
+            await session.Destinations.TickAsync(T0.AddSeconds(s));
+            await optimizer.TickAsync(Metrics(s), T0.AddSeconds(s), session.Destinations.Statuses);
+        }
         Assert.Empty(engine.BitrateChanges);
         Assert.Contains("no admite", optimizer.Status.Note);
         Directory.Delete(dir, recursive: true);
@@ -196,7 +240,7 @@ public sealed class OptimizationTests
             StudioSession.CreateDefaultProject(), Path.Combine(dir, "p.spproj"), TimeSpan.FromHours(1));
         var optimizer = new PerformanceOptimizer(session);
         for (var s = 0; s < 120; s++)
-            await optimizer.TickAsync(new EngineMetrics(60, 5, (uint)(s * 60), 0, (uint)(s * 6), true, EncodedFrames: (uint)(s * 54)), T0.AddSeconds(s));
+            await optimizer.TickAsync(new EngineMetrics(60, 5, (uint)(s * 60), 0, (uint)(s * 6), true, EncodedFrames: (uint)(s * 54)), T0.AddSeconds(s), []);
         Assert.Single(optimizer.Events, e => e.Title == "El codificador no da abasto");
         Directory.Delete(dir, recursive: true);
     }

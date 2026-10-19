@@ -78,6 +78,14 @@ public interface IStreamingEngine : IAsyncDisposable
     Task StopRecordingAsync(CancellationToken ct);
     Task StartStreamAsync(StreamTarget target, CancellationToken ct);
     Task StopStreamAsync(CancellationToken ct);
+    // Multistream: una emisión por destino; los destinos con el mismo codificador lo comparten.
+    Task StartDestinationAsync(Guid destinationId, StreamTarget target, CancellationToken ct);
+    Task StopDestinationAsync(Guid destinationId, CancellationToken ct);
+    /// <summary>Estadísticas del destino; null si nunca se inició en esta sesión.</summary>
+    Task<DestinationStats?> GetDestinationStatsAsync(Guid destinationId, CancellationToken ct);
+    /// <summary>Cambia el bitrate del codificador del destino (afecta a los destinos que lo comparten).</summary>
+    Task SetDestinationBitrateAsync(Guid destinationId, int kbps, CancellationToken ct);
+
     /// <summary>Cambia el bitrate de video de la emisión en curso sin cortarla (si el encoder lo admite).</summary>
     Task SetStreamVideoBitrateAsync(int kbps, CancellationToken ct);
     Task<bool> SupportsDynamicBitrateAsync(string encoderId, CancellationToken ct);
@@ -137,6 +145,19 @@ public sealed record VideoEncoderInfo(string Id, string Name, string Codec);
 public sealed record EngineTypeInfo(string Id, string Name, bool HasVideo, bool HasAudio);
 
 public enum OutputKind { Recording = 0, Stream = 1 }
+
+public sealed record DestinationStats(
+    bool Active,
+    bool Reconnecting,
+    uint DroppedFrames,
+    uint TotalFrames,
+    ulong TotalBytes,
+    double Congestion,
+    int VideoBitrateKbps,
+    bool DynamicBitrate,
+    bool SharedEncoder,
+    OutputStopInfo LastStop,
+    TimeSpan ConnectTime);
 
 public sealed record OutputStopInfo(int Code, string Message)
 {

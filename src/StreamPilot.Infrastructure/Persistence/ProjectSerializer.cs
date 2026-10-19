@@ -34,11 +34,22 @@ public static class ProjectSerializer
     /// <summary>
     /// Migraciones de esquema. v1 (Fase 1) no guardaba lienzo ni salidas: se completan con valores por defecto.
     /// v3 añade filtros, transición por escena y gráficos, todos opcionales: un v2 se lee tal cual.
+    /// v4 (multistream): el servidor y la clave únicos pasan a ser el destino «Principal», con la misma credencial.
     /// </summary>
     private static ProjectDto Migrate(ProjectDto dto)
     {
         if (dto.SchemaVersion < 2)
             dto = dto with { Canvas = dto.Canvas ?? new CanvasSettings(), SchemaVersion = 2 };
+        if (dto.SchemaVersion < 4 && dto.Destinations is null && dto.Stream is { Server.Length: > 0 } legacy)
+        {
+            // Id derivado del proyecto: migrar dos veces el mismo archivo da el mismo destino.
+            var id = new Guid(System.Security.Cryptography.MD5.HashData(dto.Id.ToByteArray().Concat("principal"u8.ToArray()).ToArray()));
+            dto = dto with
+            {
+                Destinations = [new DestinationDto(id, "Principal", StreamPlatform.Custom, legacy.Server, legacy.CredentialName, true, null)],
+                Stream = legacy with { Server = "" },
+            };
+        }
         return dto;
     }
 
@@ -58,7 +69,8 @@ public static class ProjectSerializer
         p.Scenes.Select(sc => new SceneDto(sc.Id, sc.Name,
             sc.Items.Select(i => new ItemDto(i.Id, i.SourceId, i.Transform, i.Visible, i.Locked)).ToList(), sc.TransitionOverride)).ToList(),
         p.Graphics.Count == 0 ? null : p.Graphics.Select(g => new GraphicDto(g.Id, g.Name, g.Kind, new Dictionary<string, string>(g.Fields),
-            g.Style, g.X, g.Y, g.Scale, g.AnimationIn, g.AnimationOut, g.AnimationMs, g.AutoHideSeconds, g.DataFile)).ToList());
+            g.Style, g.X, g.Y, g.Scale, g.AnimationIn, g.AnimationOut, g.AnimationMs, g.AutoHideSeconds, g.DataFile)).ToList(),
+        p.Destinations.Select(d => new DestinationDto(d.Id, d.Name, d.Platform, d.Server, d.CredentialName, d.Enabled, d.Encoder)).ToList());
 
     private static JsonElement Json(string json) => JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json).RootElement.Clone();
 
@@ -114,6 +126,13 @@ public static class ProjectSerializer
                 project.InsertGraphic(graphic);
         }
 
+        foreach (var d in dto.Destinations ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(d.Name) || string.IsNullOrWhiteSpace(d.CredentialName) || project.FindDestination(d.Id) is not null)
+                continue;
+            project.InsertDestination(new StreamDestination(d.Id, d.Name, d.Platform, d.Server ?? "", d.CredentialName, d.Enabled, d.Encoder));
+        }
+
         if (dto.ActiveSceneId is { } active && project.Scenes.Any(s => s.Id == active))
             project.ActivateScene(active);
         if (dto.PreviewSceneId is { } preview && project.Scenes.Any(s => s.Id == preview))
@@ -133,7 +152,11 @@ public static class ProjectSerializer
         RecordingPreferences? Recording,
         List<SourceDto>? Sources,
         List<SceneDto>? Scenes,
-        List<GraphicDto>? Graphics = null);
+        List<GraphicDto>? Graphics = null,
+        List<DestinationDto>? Destinations = null);
+
+    private sealed record DestinationDto(Guid Id, string Name, StreamPlatform Platform, string? Server, string CredentialName,
+        bool Enabled, EncoderSettings? Encoder);
 
     private sealed record SourceDto(Guid Id, string Name, SourceKind Kind, JsonElement Settings, double Volume, bool Muted,
         AudioMonitoring Monitoring, int SyncOffsetMs, int GlobalAudioChannel, List<FilterDto>? Filters = null);

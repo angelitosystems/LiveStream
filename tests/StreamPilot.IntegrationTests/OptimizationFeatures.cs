@@ -72,7 +72,7 @@ internal sealed class OptimizationFeatures(LibObsEngine engine, ITestOutputHelpe
         finally
         {
             if (!server.HasExited)
-                server.Kill();
+                server.Kill(entireProcessTree: true);
         }
     }
 

@@ -165,7 +165,7 @@ public static class PerformanceWindow
         };
         restore.Click += async (_, _) =>
         {
-            await vm.Optimizer.RestoreTargetAsync();
+            await vm.Optimizer.RestoreTargetAsync(vm.Session.Destinations.Statuses);
             adaptive.IsChecked = false;
         };
 

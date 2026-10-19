@@ -155,8 +155,9 @@ public sealed class AssistantTests : IAsyncLifetime
     [Fact]
     public async Task StudioState_NeverLeaksStreamDestinationOrKey()
     {
-        _session.Project.Stream = new StreamSettings("rtmp://ingest.example.com/live/secreto-en-url", "stream-key-default");
-        await _session.SetStreamKeyAsync("clave-super-secreta");
+        var d = StreamDestination.Create("Mi canal", StreamPlatform.Custom, "rtmp://ingest.example.com/live/secreto-en-url");
+        _session.Project.InsertDestination(d);
+        await _session.SetDestinationKeyAsync(d.Id, "clave-super-secreta");
         var state = (await Ok("get_studio_state", new { })).Content;
         Assert.DoesNotContain("ingest.example.com", state);
         Assert.DoesNotContain("secreto", state);

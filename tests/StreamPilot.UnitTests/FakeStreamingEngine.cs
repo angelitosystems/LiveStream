@@ -124,6 +124,39 @@ internal sealed class FakeStreamingEngine : IStreamingEngine
     public Task StopRecordingAsync(CancellationToken ct) => Do("rec-", () => { });
     public Task StartStreamAsync(StreamTarget target, CancellationToken ct) => Do("stream+", () => LastStream = target);
     public Task StopStreamAsync(CancellationToken ct) => Do("stream-", () => { });
+    /// <summary>Destinos emitiendo en el motor falso; las pruebas pueden cambiar su estado para simular la red.</summary>
+    public Dictionary<Guid, DestinationStats> Destinations { get; } = [];
+    public Dictionary<Guid, StreamTarget> DestinationTargets { get; } = [];
+    /// <summary>Servidores que rechazan la conexión al iniciar.</summary>
+    public HashSet<string> FailingServers { get; } = [];
+
+    public Task StartDestinationAsync(Guid destinationId, StreamTarget target, CancellationToken ct) => Do("dest+", () =>
+    {
+        if (FailingServers.Contains(target.Server)) throw new InvalidOperationException("obs_output_start falló: no se pudo conectar");
+        if (Destinations.TryGetValue(destinationId, out var s) && s.Active) throw new InvalidOperationException("Ese destino ya está emitiendo.");
+        DestinationTargets[destinationId] = target;
+        var shared = DestinationTargets.Any(t => t.Key != destinationId && Destinations.TryGetValue(t.Key, out var o) && o.Active && t.Value.Encoder == target.Encoder);
+        Destinations[destinationId] = new DestinationStats(true, false, 0, 0, 0, 0, target.Encoder.VideoBitrateKbps, DynamicBitrate, shared,
+            new OutputStopInfo(0, ""), TimeSpan.FromMilliseconds(120));
+    });
+    public Task StopDestinationAsync(Guid destinationId, CancellationToken ct) => Do("dest-", () =>
+    {
+        if (!Destinations.TryGetValue(destinationId, out var s) || !s.Active) throw new InvalidOperationException("Ese destino no está emitiendo.");
+        Destinations[destinationId] = s with { Active = false, Reconnecting = false };
+    });
+    public Task<DestinationStats?> GetDestinationStatsAsync(Guid destinationId, CancellationToken ct) =>
+        Task.FromResult(Destinations.TryGetValue(destinationId, out var s) ? s : null);
+    public Task SetDestinationBitrateAsync(Guid destinationId, int kbps, CancellationToken ct) => Do("dest-bitrate", () =>
+    {
+        if (!DynamicBitrate) throw new InvalidOperationException("Sin bitrate dinámico.");
+        // Como en libobs: el codificador compartido cambia para todos los destinos que lo usan.
+        var encoder = DestinationTargets[destinationId].Encoder;
+        foreach (var id in DestinationTargets.Where(t => t.Value.Encoder == encoder).Select(t => t.Key).ToList())
+            if (Destinations.TryGetValue(id, out var s) && s.Active)
+                Destinations[id] = s with { VideoBitrateKbps = kbps };
+        BitrateChanges.Add(kbps);
+    });
+
     public List<int> BitrateChanges { get; } = [];
     public bool DynamicBitrate { get; set; } = true;
     public Task SetStreamVideoBitrateAsync(int kbps, CancellationToken ct) => Do("bitrate", () =>

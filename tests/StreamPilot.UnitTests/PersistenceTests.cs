@@ -145,13 +145,18 @@ public sealed class PersistenceTests : IDisposable
         await using var session = new StudioSession(engine, new JsonProjectRepository(_dir), secrets, project,
             Path.Combine(_dir, "p.spproj"), TimeSpan.FromMilliseconds(10));
 
+        Assert.Contains("destinos", await session.ValidateStreamAsync());
+        var destination = StreamDestination.Create("YouTube", StreamPlatform.YouTube, "rtmp://a.rtmp.youtube.com/live2");
+        project.InsertDestination(destination);
         Assert.Contains("clave", await session.ValidateStreamAsync());
-        await session.SetStreamKeyAsync("abc");
+        await session.SetDestinationKeyAsync(destination.Id, "abc");
         Assert.Null(await session.ValidateStreamAsync());
 
         await session.StartStreamAsync();
-        Assert.Equal("abc", engine.LastStream!.Key);
-        Assert.DoesNotContain("abc", engine.LastStream.ToString());
+        var target = engine.DestinationTargets[destination.Id];
+        Assert.Equal("abc", target.Key);
+        Assert.DoesNotContain("abc", target.ToString());
+        Assert.DoesNotContain("abc", ProjectSerializer.Serialize(project));
     }
 
     [Fact]

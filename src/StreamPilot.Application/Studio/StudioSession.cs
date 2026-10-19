@@ -1,6 +1,7 @@
 using StreamPilot.Application.Abstractions;
 using StreamPilot.Application.Commands;
 using StreamPilot.Application.Graphics;
+using StreamPilot.Application.Streaming;
 using StreamPilot.Domain.Entities;
 using StreamPilot.Domain.ValueObjects;
 
@@ -28,6 +29,7 @@ public sealed class StudioSession : IAsyncDisposable
         Executor = new CommandExecutor(new StudioContext(project, engine));
         Executor.StateChanged += (_, _) => ScheduleAutosave();
         Graphics = new GraphicsService(Executor);
+        Destinations = new StreamSupervisor(this);
     }
 
     public IStreamingEngine Engine { get; }
@@ -94,31 +96,121 @@ public sealed class StudioSession : IAsyncDisposable
         return path;
     }
 
-    /// <summary>Valida el destino y descifra la clave justo antes de iniciar. La clave no se guarda en memoria del proyecto.</summary>
+    /// <summary>Supervisión por destino (estado, reconexiones, errores).</summary>
+    public StreamSupervisor Destinations { get; private set; } = null!;
+
+    public sealed record DestinationStartResult(StreamDestination Destination, string? Error);
+
+    public IEnumerable<StreamDestination> EnabledDestinations => Project.Destinations.Where(d => d.Enabled);
+
+    /// <summary>Problema que impide emitir a un destino (servidor, plataforma o clave); null si está listo.</summary>
+    public async Task<string?> ValidateDestinationAsync(StreamDestination d, CancellationToken ct = default)
+    {
+        if (PlatformCatalog.Validate(d, d.EffectiveEncoder(Project.Stream)) is { } error)
+            return error;
+        var key = await _secrets.GetAsync(d.CredentialName, ct).ConfigureAwait(false);
+        return string.IsNullOrEmpty(key) ? $"«{d.Name}»: falta la clave de transmisión." : null;
+    }
+
+    /// <summary>Comprueba que haya algo a lo que emitir. Los destinos con problemas se describen todos juntos.</summary>
     public async Task<string?> ValidateStreamAsync(CancellationToken ct = default)
     {
-        var server = Project.Stream.Server.Trim();
-        if (server.Length == 0)
-            return "Configura el servidor RTMP en Ajustes > Transmisión.";
-        if (!server.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase) && !server.StartsWith("rtmps://", StringComparison.OrdinalIgnoreCase))
-            return "El servidor debe empezar por rtmp:// o rtmps://.";
-        var key = await _secrets.GetAsync(Project.Stream.CredentialName, ct).ConfigureAwait(false);
-        return string.IsNullOrEmpty(key) ? "Falta la clave de transmisión en Ajustes > Transmisión." : null;
+        var enabled = EnabledDestinations.ToList();
+        if (enabled.Count == 0)
+            return Project.Destinations.Count == 0
+                ? "No hay destinos de emisión. Añade uno en Emisión → Destinos."
+                : "Todos los destinos están desactivados.";
+        var problems = new List<string>();
+        foreach (var d in enabled)
+            if (await ValidateDestinationAsync(d, ct).ConfigureAwait(false) is { } p)
+                problems.Add(p);
+        return problems.Count == enabled.Count ? string.Join("\n", problems) : null;
     }
 
-    public async Task StartStreamAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Inicia la emisión a todos los destinos activados que estén listos. Un destino que falla no impide los demás;
+    /// el resultado dice qué pasó con cada uno. Falla solo si no arranca ninguno.
+    /// </summary>
+    public async Task<IReadOnlyList<DestinationStartResult>> StartStreamAsync(CancellationToken ct = default)
     {
-        if (await ValidateStreamAsync(ct).ConfigureAwait(false) is { } error)
-            throw new InvalidOperationException(error);
-        var key = await _secrets.GetAsync(Project.Stream.CredentialName, ct).ConfigureAwait(false);
-        await Engine.StartStreamAsync(new StreamTarget(Project.Stream.Server.Trim(), key!, Project.Stream.EffectiveEncoder), ct).ConfigureAwait(false);
+        var results = new List<DestinationStartResult>();
+        foreach (var d in EnabledDestinations.ToList())
+        {
+            if (Destinations.IsLive(d.Id))
+                continue;
+            try
+            {
+                await StartDestinationAsync(d.Id, ct).ConfigureAwait(false);
+                results.Add(new(d, null));
+            }
+            catch (InvalidOperationException ex)
+            {
+                results.Add(new(d, ex.Message));
+            }
+        }
+        if (results.Count > 0 && results.All(r => r.Error is not null))
+            throw new InvalidOperationException(string.Join("\n", results.Select(r => r.Error)));
+        return results;
     }
 
-    public Task SetStreamKeyAsync(string key, CancellationToken ct = default) =>
-        _secrets.SetAsync(Project.Stream.CredentialName, key, ct);
+    /// <summary>Inicia un destino concreto (aunque esté desactivado para el inicio general).</summary>
+    public async Task StartDestinationAsync(Guid id, CancellationToken ct = default)
+    {
+        var d = Project.FindDestination(id) ?? throw new InvalidOperationException("El destino no existe.");
+        if (await ValidateDestinationAsync(d, ct).ConfigureAwait(false) is { } problem)
+        {
+            Destinations.MarkFailedToStart(d, problem);
+            throw new InvalidOperationException(problem);
+        }
+        var key = await _secrets.GetAsync(d.CredentialName, ct).ConfigureAwait(false);
+        Destinations.MarkStarting(d.Id);
+        try
+        {
+            await Engine.StartDestinationAsync(d.Id, new StreamTarget(d.Server.Trim(), key!, d.EffectiveEncoder(Project.Stream)), ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Destinations.MarkFailedToStart(d, ex.Message);
+            throw new InvalidOperationException($"«{d.Name}»: {ex.Message}", ex);
+        }
+    }
 
-    public async Task<bool> HasStreamKeyAsync(CancellationToken ct = default) =>
-        !string.IsNullOrEmpty(await _secrets.GetAsync(Project.Stream.CredentialName, ct).ConfigureAwait(false));
+    public async Task StopDestinationAsync(Guid id, CancellationToken ct = default)
+    {
+        var d = Project.FindDestination(id) ?? throw new InvalidOperationException("El destino no existe.");
+        await Engine.StopDestinationAsync(id, ct).ConfigureAwait(false);
+        Destinations.MarkStopped(d);
+    }
+
+    /// <summary>Detiene todos los destinos que están emitiendo o reconectando.</summary>
+    public async Task StopStreamAsync(CancellationToken ct = default)
+    {
+        foreach (var d in Project.Destinations.ToList())
+        {
+            var stats = await Engine.GetDestinationStatsAsync(d.Id, ct).ConfigureAwait(false);
+            if (stats is { Active: true } || Destinations.IsLive(d.Id))
+            {
+                try
+                {
+                    await StopDestinationAsync(d.Id, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Ya se había caído: no hay nada que detener.
+                    Destinations.MarkStopped(d);
+                }
+            }
+        }
+    }
+
+    public Task SetDestinationKeyAsync(Guid id, string key, CancellationToken ct = default) =>
+        _secrets.SetAsync((Project.FindDestination(id) ?? throw new InvalidOperationException("El destino no existe.")).CredentialName, key, ct);
+
+    public async Task<bool> HasDestinationKeyAsync(Guid id, CancellationToken ct = default) =>
+        Project.FindDestination(id) is { } d && !string.IsNullOrEmpty(await _secrets.GetAsync(d.CredentialName, ct).ConfigureAwait(false));
+
+    /// <summary>Borra la clave cifrada de un destino (al eliminarlo definitivamente).</summary>
+    public Task DeleteDestinationKeyAsync(string credentialName, CancellationToken ct = default) => _secrets.DeleteAsync(credentialName, ct);
 
     /// <summary>Calcula una transformación que encaja una fuente en el lienzo conservando su relación de aspecto.</summary>
     public static Transform FitToCanvas(int sourceWidth, int sourceHeight, CanvasSettings canvas)

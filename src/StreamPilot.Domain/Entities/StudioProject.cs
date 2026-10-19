@@ -5,11 +5,44 @@ namespace StreamPilot.Domain.Entities;
 /// <summary>Raíz del proyecto de estudio. Es la unidad que se persiste y versiona.</summary>
 public sealed class StudioProject
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     private readonly List<Scene> _scenes = [];
     private readonly List<Source> _sources = [];
     private readonly List<Graphic> _graphics = [];
+    private readonly List<StreamDestination> _destinations = [];
+
+    /// <summary>Destinos de emisión (multistream). Se emite a todos los activados a la vez.</summary>
+    public IReadOnlyList<StreamDestination> Destinations => _destinations;
+
+    public StreamDestination? FindDestination(Guid id) => _destinations.FirstOrDefault(d => d.Id == id);
+
+    public void InsertDestination(StreamDestination destination, int? index = null)
+    {
+        if (_destinations.Any(d => d.Id == destination.Id))
+            throw new InvalidOperationException("El destino ya existe.");
+        _destinations.Insert(Math.Clamp(index ?? _destinations.Count, 0, _destinations.Count), destination);
+    }
+
+    public StreamDestination ReplaceDestination(StreamDestination destination)
+    {
+        var index = _destinations.FindIndex(d => d.Id == destination.Id);
+        if (index < 0)
+            throw new KeyNotFoundException($"Destino {destination.Id} no encontrado.");
+        var previous = _destinations[index];
+        _destinations[index] = destination;
+        return previous;
+    }
+
+    public (StreamDestination Destination, int Index) RemoveDestination(Guid id)
+    {
+        var index = _destinations.FindIndex(d => d.Id == id);
+        if (index < 0)
+            throw new KeyNotFoundException($"Destino {id} no encontrado.");
+        var destination = _destinations[index];
+        _destinations.RemoveAt(index);
+        return (destination, index);
+    }
 
     public StudioProject(Guid id, string name, int schemaVersion = CurrentSchemaVersion)
     {

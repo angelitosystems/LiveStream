@@ -84,6 +84,22 @@ internal struct SpTransform
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct SpStreamStats
+{
+    public int Active;
+    public int Reconnecting;
+    public uint DroppedFrames;
+    public uint TotalFrames;
+    public ulong TotalBytes;
+    public float Congestion;
+    public uint VideoBitrateKbps;
+    public int DynamicBitrate;
+    public int LastStopCode;
+    public int SharedEncoder;
+    public uint ConnectTimeMs;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct SpMetrics
 {
     public double ActiveFps;

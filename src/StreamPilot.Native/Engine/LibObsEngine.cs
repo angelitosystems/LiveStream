@@ -412,6 +412,42 @@ public sealed class LibObsEngine : IStreamingEngine, IEngineDisplays
     public Task StopStreamAsync(CancellationToken ct) =>
         Run(e => Check(NativeMethods.StreamStop(e), "sp_stream_stop"), ct);
 
+    // ---- Multistream ----------------------------------------------------------------------------
+
+    public Task StartDestinationAsync(Guid destinationId, StreamTarget target, CancellationToken ct) => Run(e =>
+    {
+        using var pin = new Utf8Pin(); // borra la clave de la memoria no administrada al terminar
+        var config = new SpStreamConfig { Server = pin.Add(target.Server), Key = pin.Add(target.Key), Encoder = Encoder(pin, target.Encoder) };
+        Check(NativeMethods.StreamStartDest(e, Id(destinationId), in config), "sp_stream_start_dest");
+    }, ct);
+
+    public Task StopDestinationAsync(Guid destinationId, CancellationToken ct) =>
+        Run(e => Check(NativeMethods.StreamStopDest(e, Id(destinationId)), "sp_stream_stop_dest"), ct);
+
+    public Task SetDestinationBitrateAsync(Guid destinationId, int kbps, CancellationToken ct) =>
+        Run(e => Check(NativeMethods.StreamSetVideoBitrateDest(e, Id(destinationId), (uint)kbps), "sp_stream_set_video_bitrate_dest"), ct);
+
+    public Task<DestinationStats?> GetDestinationStatsAsync(Guid destinationId, CancellationToken ct) => Run<DestinationStats?>(e =>
+    {
+        var id = Id(destinationId);
+        var result = NativeMethods.StreamGetStats(e, id, out var s);
+        if (result == SpResult.NotFound)
+            return null;
+        Check(result, "sp_stream_get_stats");
+        var message = "";
+        if (s.LastStopCode != 0)
+        {
+            unsafe
+            {
+                Check(NativeMethods.ReadString((byte* b, int size, out int r) => NativeMethods.StreamLastError(e, id, b, size, out r), out message),
+                    "sp_stream_last_error");
+            }
+        }
+        return new DestinationStats(s.Active != 0, s.Reconnecting != 0, s.DroppedFrames, s.TotalFrames, s.TotalBytes, s.Congestion,
+            (int)s.VideoBitrateKbps, s.DynamicBitrate != 0, s.SharedEncoder != 0, new OutputStopInfo(s.LastStopCode, message),
+            TimeSpan.FromMilliseconds(s.ConnectTimeMs));
+    }, ct);
+
     public Task<OutputStopInfo> GetLastStopAsync(OutputKind kind, CancellationToken ct) => Run(e =>
     {
         var code = 0;
