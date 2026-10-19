@@ -1,16 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Instalador por usuario. scripts/package.ps1 lo publica como un único .exe con el paquete de la aplicación
-       incrustado (propiedad PayloadZip). -->
+       incrustado (propiedad PayloadZip). Asistente en Avalonia; con /quiet instala sin interfaz. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AssemblyName>LiveStream-Setup</AssemblyName>
+    <RootNamespace>LiveStream.Setup</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\Assets\generated\LiveStream.ico</ApplicationIcon>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <InvariantGlobalization>true</InvariantGlobalization>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Include="..\..\src\LiveStream.Desktop\Install\InstallLayout.cs" Link="InstallLayout.cs" />
+    <AvaloniaResource Include="..\..\Assets\generated\LiveStream.ico;..\..\Assets\generated\logo-512.png" Link="Assets\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup Condition="'$(PayloadZip)' != ''">
     <EmbeddedResource Include="$(PayloadZip)" LogicalName="payload.zip" />

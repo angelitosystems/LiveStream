@@ -1,0 +1,242 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Tema del instalador. Misma base grafito que la aplicación (Themes/Theme.axaml) con el degradado del logo
+    (cian → violeta → rojo) como acento de marca.
+  -->
+  <Styles.Resources>
+    <ResourceDictionary>
+      <Color x:Key="St.Bg0">#FF0E0F12</Color>
+      <Color x:Key="St.Bg1">#FF16181C</Color>
+      <Color x:Key="St.Bg2">#FF1E2126</Color>
+      <Color x:Key="St.Line">#FF2A2E35</Color>
+      <Color x:Key="St.Text">#FFF2F3F5</Color>
+      <Color x:Key="St.TextMuted">#FF9AA1AB</Color>
+      <Color x:Key="St.Cyan">#FF22D3FF</Color>
+      <Color x:Key="St.Blue">#FF2F6BFF</Color>
+      <Color x:Key="St.Violet">#FFB13CFF</Color>
+      <Color x:Key="St.Pink">#FFFF2D8A</Color>
+      <Color x:Key="St.Red">#FFFF3B4E</Color>
+      <Color x:Key="St.Ok">#FF30A46C</Color>
+
+      <SolidColorBrush x:Key="St.Bg0Brush" Color="{StaticResource St.Bg0}" />
+      <SolidColorBrush x:Key="St.Bg1Brush" Color="{StaticResource St.Bg1}" />
+      <SolidColorBrush x:Key="St.Bg2Brush" Color="{StaticResource St.Bg2}" />
+      <SolidColorBrush x:Key="St.LineBrush" Color="{StaticResource St.Line}" />
+      <SolidColorBrush x:Key="St.TextBrush" Color="{StaticResource St.Text}" />
+      <SolidColorBrush x:Key="St.TextMutedBrush" Color="{StaticResource St.TextMuted}" />
+      <SolidColorBrush x:Key="St.RedBrush" Color="{StaticResource St.Red}" />
+      <SolidColorBrush x:Key="St.PinkBrush" Color="{StaticResource St.Pink}" />
+      <SolidColorBrush x:Key="St.CyanBrush" Color="{StaticResource St.Cyan}" />
+
+      <LinearGradientBrush x:Key="St.BrandBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+        <GradientStop Offset="0" Color="{StaticResource St.Cyan}" />
+        <GradientStop Offset="0.35" Color="{StaticResource St.Blue}" />
+        <GradientStop Offset="0.7" Color="{StaticResource St.Violet}" />
+        <GradientStop Offset="1" Color="{StaticResource St.Red}" />
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="St.BrandHBrush" StartPoint="0%,50%" EndPoint="100%,50%">
+        <GradientStop Offset="0" Color="{StaticResource St.Blue}" />
+        <GradientStop Offset="0.55" Color="{StaticResource St.Violet}" />
+        <GradientStop Offset="1" Color="{StaticResource St.Red}" />
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="St.SponsorBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+        <GradientStop Offset="0" Color="#33FF2D8A" />
+        <GradientStop Offset="1" Color="#14B13CFF" />
+      </LinearGradientBrush>
+
+      <FontFamily x:Key="St.Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+      <Color x:Key="SystemAccentColor">#FF3D8BFF</Color>
+      <Color x:Key="SystemAccentColorLight1">#FF5C9DFF</Color>
+      <Color x:Key="SystemAccentColorLight2">#FF7AB0FF</Color>
+      <Color x:Key="SystemAccentColorDark1">#FF2F72D6</Color>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <Style Selector="Window">
+    <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI, sans-serif" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{StaticResource St.TextBrush}" />
+  </Style>
+
+  <!-- Texto -->
+  <Style Selector="TextBlock.h1">
+    <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI, sans-serif" />
+    <Setter Property="FontSize" Value="28" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.h2">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{StaticResource St.TextMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.lead">
+    <Setter Property="Foreground" Value="{StaticResource St.TextMutedBrush}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="LineHeight" Value="21" />
+  </Style>
+  <Style Selector="TextBlock.icon">
+    <Setter Property="FontFamily" Value="{StaticResource St.Icons}" />
+    <Setter Property="FontSize" Value="18" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.eyebrow">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="1.2" />
+    <Setter Property="Foreground" Value="{StaticResource St.PinkBrush}" />
+  </Style>
+
+  <!-- Tarjetas -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{StaticResource St.Bg1Brush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource St.LineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="14" />
+  </Style>
+  <Style Selector="Border.iconTile">
+    <Setter Property="Width" Value="36" />
+    <Setter Property="Height" Value="36" />
+    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="Background" Value="{StaticResource St.Bg2Brush}" />
+  </Style>
+  <Style Selector="Border.sponsor">
+    <Setter Property="Background" Value="{StaticResource St.SponsorBrush}" />
+    <Setter Property="BorderBrush" Value="#55FF2D8A" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="16" />
+  </Style>
+  <!-- Hueco libre en el muro de auspiciadores -->
+  <Style Selector="Rectangle.slot">
+    <Setter Property="Height" Value="44" />
+    <Setter Property="RadiusX" Value="8" />
+    <Setter Property="RadiusY" Value="8" />
+    <Setter Property="Stroke" Value="#55FFFFFF" />
+    <Setter Property="StrokeThickness" Value="1" />
+    <Setter Property="StrokeDashArray" Value="4,3" />
+    <Setter Property="Fill" Value="#0AFFFFFF" />
+  </Style>
+
+  <!-- Pasos del panel lateral -->
+  <Style Selector="Border.stepDot">
+    <Setter Property="Width" Value="22" />
+    <Setter Property="Height" Value="22" />
+    <Setter Property="CornerRadius" Value="11" />
+    <Setter Property="BorderThickness" Value="1.5" />
+    <Setter Property="BorderBrush" Value="#44FFFFFF" />
+  </Style>
+  <Style Selector="Border.stepDot TextBlock">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Foreground" Value="{StaticResource St.TextMutedBrush}" />
+  </Style>
+  <Style Selector="Border.stepDot.active">
+    <Setter Property="Background" Value="{StaticResource St.BrandBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="Border.stepDot.done">
+    <Setter Property="Background" Value="#3330A46C" />
+    <Setter Property="BorderBrush" Value="{StaticResource St.Ok}" />
+  </Style>
+  <Style Selector="Border.stepDot.active TextBlock, Border.stepDot.done TextBlock">
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="TextBlock.stepLabel">
+    <Setter Property="Foreground" Value="{StaticResource St.TextMutedBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.stepLabel.active">
+    <Setter Property="Foreground" Value="{StaticResource St.TextBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- Botones -->
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="16,8" />
+    <Setter Property="MinHeight" Value="36" />
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{StaticResource St.BrandHBrush}" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Padding" Value="22,8" />
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource St.BrandHBrush}" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="Opacity" Value="0.88" />
+  </Style>
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource St.BrandHBrush}" />
+    <Setter Property="Opacity" Value="0.75" />
+  </Style>
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter">
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+  <Style Selector="Button.heart">
+    <Setter Property="Background" Value="{StaticResource St.PinkBrush}" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.heart:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#FFFF4D9E" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="Button.ghost">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{StaticResource St.LineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Button.link">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Padding" Value="4,2" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Foreground" Value="{StaticResource St.TextMutedBrush}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.link:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{StaticResource St.TextBrush}" />
+  </Style>
+  <Style Selector="Button.chrome">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Width" Value="46" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="FontFamily" Value="{StaticResource St.Icons}" />
+    <Setter Property="FontSize" Value="10" />
+  </Style>
+  <Style Selector="Button.chrome.close:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#FFC42B1C" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+
+  <Style Selector="ProgressBar.brand">
+    <Setter Property="Height" Value="8" />
+    <Setter Property="MinHeight" Value="8" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Background" Value="{StaticResource St.Bg2Brush}" />
+    <Setter Property="Foreground" Value="{StaticResource St.BrandHBrush}" />
+  </Style>
+  <Style Selector="CheckBox">
+    <Setter Property="Foreground" Value="{StaticResource St.TextBrush}" />
+  </Style>
+  <Style Selector="TextBox">
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+</Styles>

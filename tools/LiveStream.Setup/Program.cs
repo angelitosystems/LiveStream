@@ -1,112 +1,70 @@
-using System.Diagnostics;
-using System.IO.Compression;
-using System.Reflection;
+using Avalonia;
 using LiveStream.Install;
+
+namespace LiveStream.Setup;
 
 // Instalador de LiveStream (por usuario, sin administrador).
 //   LiveStream-Setup.exe [/quiet] [/dir <carpeta>] [/noshortcuts] [/waitpid <pid>] [/launch]
+// Sin /quiet muestra el asistente; con /quiet instala sin interfaz.
 // Códigos de salida: 0 instalado, 1 error, 2 cancelado, 3 LiveStream abierto.
-
-var argv = Environment.GetCommandLineArgs().Skip(1).ToList();
-bool Flag(string name) => argv.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
-string? Value(string name)
+internal static class Program
 {
-    var i = argv.FindIndex(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
-    return i >= 0 && i + 1 < argv.Count ? argv[i + 1] : null;
-}
+    /// <summary>Opciones de la línea de comandos; el asistente parte de ellas.</summary>
+    public static SetupArguments Arguments { get; private set; } = null!;
 
-var quiet = Flag("/quiet");
-var directory = Path.GetFullPath(Value("/dir") ?? InstallLayout.DefaultDirectory).TrimEnd('\\');
-var version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
-var log = Path.Combine(Path.GetTempPath(), "LiveStream-Setup.log");
-void Log(string message) => File.AppendAllText(log, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}");
+    /// <summary>Código de salida que fija el asistente al cerrarse.</summary>
+    public static int ExitCode { get; set; } = 2;
 
-try
-{
-    Log($"Instalador {version}: destino {directory}");
-    using var payload = Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip");
-    if (payload is null)
-        return Fail("Este instalador no contiene la aplicación (se compiló sin paquete). Usa el que genera scripts/package.ps1.", 1);
+    [STAThread]
+    public static int Main(string[] args)
+    {
+        Arguments = SetupArguments.Parse(args);
+        if (Arguments.Quiet)
+            return RunQuiet(Arguments);
+        AppBuilder.Configure<SetupApp>().UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime(args);
+        return ExitCode;
+    }
 
-    // Actualización lanzada desde la propia aplicación: se espera a que se cierre.
-    if (Value("/waitpid") is { } pidText && int.TryParse(pidText, out var pid))
+    private static int RunQuiet(SetupArguments a)
     {
         try
         {
-            using var running = Process.GetProcessById(pid);
-            running.WaitForExit(60_000);
+            SetupEngine.Install(new InstallOptions(a.Directory, !a.NoShortcuts, DesktopShortcut: false, a.WaitPid));
+            if (a.Launch)
+                SetupEngine.Launch(a.Directory);
+            return 0;
         }
-        catch (ArgumentException)
+        catch (SetupBlockedException ex)
         {
-            // Ya había terminado.
+            SetupEngine.Log(ex.Message);
+            return ex.ExitCode;
         }
-    }
-
-    if (!quiet && !InstallLayout.Ask($"¿Instalar LiveStream {version} para este usuario?\n\nCarpeta: {directory}\n\n" +
-                                     "No requiere permisos de administrador. Tus proyectos y ajustes se conservan."))
-        return 2;
-
-    if (InstallLayout.RunningFrom(directory).Count > 0)
-        return Fail("LiveStream está abierto. Ciérralo y vuelve a ejecutar el instalador.", 3);
-
-    // Se extrae al lado y se intercambia: si algo falla, la instalación anterior queda intacta.
-    var staging = directory + ".new";
-    var previous = directory + ".old";
-    foreach (var d in new[] { staging, previous })
-        if (Directory.Exists(d))
-            Directory.Delete(d, recursive: true);
-    Directory.CreateDirectory(Path.GetDirectoryName(directory)!);
-    using (var zip = new ZipArchive(payload, ZipArchiveMode.Read))
-        zip.ExtractToDirectory(staging);
-    if (!File.Exists(Path.Combine(staging, InstallLayout.ExeName)))
-        throw new InvalidDataException("El paquete no contiene LiveStream.Desktop.exe.");
-    File.WriteAllText(Path.Combine(staging, InstallLayout.MarkerFile), $"{version}\n");
-
-    var hadPrevious = Directory.Exists(directory);
-    if (hadPrevious)
-        Directory.Move(directory, previous);
-    try
-    {
-        Directory.Move(staging, directory);
-    }
-    catch
-    {
-        if (hadPrevious)
-            Directory.Move(previous, directory); // vuelta atrás
-        throw;
-    }
-    if (hadPrevious)
-    {
-        try
+        catch (Exception ex)
         {
-            Directory.Delete(previous, recursive: true);
-        }
-        catch (IOException ex)
-        {
-            Log($"No se pudo borrar la versión anterior ({previous}): {ex.Message}");
+            SetupEngine.Log($"Error: {ex}");
+            return 1;
         }
     }
-
-    InstallLayout.Register(directory, version, InstallLayout.DirectorySize(directory));
-    if (!Flag("/noshortcuts"))
-        InstallLayout.CreateShortcut(directory);
-    Log("Instalación completada.");
-
-    var launch = Flag("/launch") || (!quiet && InstallLayout.Ask($"LiveStream {version} se ha instalado.\n\n¿Abrirlo ahora?"));
-    if (launch)
-        Process.Start(new ProcessStartInfo(Path.Combine(directory, InstallLayout.ExeName)) { UseShellExecute = true, WorkingDirectory = directory });
-    return 0;
-}
-catch (Exception ex)
-{
-    Log($"Error: {ex}");
-    return Fail($"No se pudo instalar LiveStream: {ex.Message}\n\nDetalle en {log}", 1);
 }
 
-int Fail(string message, int code)
+internal sealed record SetupArguments(bool Quiet, string Directory, bool NoShortcuts, int? WaitPid, bool Launch)
 {
-    Log(message);
-    if (!quiet)
-        InstallLayout.Error(message);
-    return code;
+    /// <summary>Actualización lanzada desde la aplicación (espera a que se cierre y la vuelve a abrir).</summary>
+    public bool IsUpdate => WaitPid is not null;
+
+    public static SetupArguments Parse(IReadOnlyList<string> argv)
+    {
+        bool Flag(string name) => argv.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
+        string? Value(string name)
+        {
+            var i = argv.ToList().FindIndex(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
+            return i >= 0 && i + 1 < argv.Count ? argv[i + 1] : null;
+        }
+        return new SetupArguments(
+            Flag("/quiet"),
+            Path.GetFullPath(Value("/dir") ?? InstallLayout.RegisteredDirectory ?? InstallLayout.DefaultDirectory).TrimEnd('\\'),
+            Flag("/noshortcuts"),
+            int.TryParse(Value("/waitpid"), out var pid) ? pid : null,
+            Flag("/launch"));
+    }
 }

@@ -1,0 +1,290 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="LiveStream.Setup.SetupWindow"
+        Title="Instalar LiveStream"
+        Icon="avares://LiveStream-Setup/Assets/LiveStream.ico"
+        Width="900" Height="580" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource St.Bg0Brush}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+  <Grid ColumnDefinitions="300,*">
+
+    <!-- ===== Panel de marca ===== -->
+    <Panel Grid.Column="0" PointerPressed="OnDragWindow">
+      <Border>
+        <Border.Background>
+          <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Offset="0" Color="#FF0B1530" />
+            <GradientStop Offset="0.55" Color="#FF120C24" />
+            <GradientStop Offset="1" Color="#FF240A1A" />
+          </LinearGradientBrush>
+        </Border.Background>
+      </Border>
+      <!-- Destellos con los colores del logo -->
+      <Ellipse Width="360" Height="360" Margin="-170,-150,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False">
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Offset="0" Color="#5522D3FF" />
+            <GradientStop Offset="1" Color="#0022D3FF" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+      </Ellipse>
+      <Ellipse Width="380" Height="380" Margin="0,0,-190,-170" HorizontalAlignment="Right" VerticalAlignment="Bottom" IsHitTestVisible="False">
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Offset="0" Color="#55FF2D55" />
+            <GradientStop Offset="1" Color="#00FF2D55" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+      </Ellipse>
+      <Border Width="1" HorizontalAlignment="Right" Background="#22FFFFFF" />
+
+      <DockPanel Margin="28,36,28,24">
+        <StackPanel DockPanel.Dock="Top" Spacing="14">
+          <Image Source="avares://LiveStream-Setup/Assets/logo-512.png" Width="132" Height="132"
+                 HorizontalAlignment="Left" RenderOptions.BitmapInterpolationMode="HighQuality" />
+          <StackPanel Spacing="4">
+            <TextBlock Classes="eyebrow" Text="ESTUDIO EN DIRECTO" />
+            <TextBlock FontSize="13" Foreground="#CCFFFFFF" TextWrapping="Wrap"
+                       Text="Producción, grafismo y multistream con asistente de IA." />
+          </StackPanel>
+          <Border HorizontalAlignment="Left" CornerRadius="10" Padding="8,2" Background="#22FFFFFF">
+            <TextBlock x:Name="VersionChip" FontSize="11" Foreground="#DDFFFFFF" Text="Versión 0.0.0" />
+          </Border>
+        </StackPanel>
+
+        <!-- Llamada a auspiciar, visible en todos los pasos -->
+        <Button DockPanel.Dock="Bottom" Classes="link" Padding="0" HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch" Click="OnSponsor" ToolTip.Tip="Auspicia LiveStream">
+          <Border CornerRadius="10" Padding="12,10" Background="#1AFFFFFF" BorderBrush="#33FF2D8A" BorderThickness="1">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Classes="icon" Text="&#xEB51;" Foreground="{StaticResource St.PinkBrush}" FontSize="16" />
+              <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                <TextBlock Text="Auspicia LiveStream" FontWeight="SemiBold" Foreground="White" />
+                <TextBlock Text="Ayúdanos a seguir creciendo" FontSize="11" Foreground="#AAFFFFFF" />
+              </StackPanel>
+              <TextBlock Grid.Column="2" Classes="icon" Text="&#xE76C;" FontSize="11" Foreground="#AAFFFFFF" />
+            </Grid>
+          </Border>
+        </Button>
+
+        <StackPanel x:Name="Steps" Margin="0,34,0,0" Spacing="14" VerticalAlignment="Top" />
+      </DockPanel>
+    </Panel>
+
+    <!-- ===== Contenido ===== -->
+    <DockPanel Grid.Column="1">
+      <!-- Barra de título propia -->
+      <Grid DockPanel.Dock="Top" Height="34" ColumnDefinitions="*,Auto,Auto" Background="Transparent" PointerPressed="OnDragWindow">
+        <Button Grid.Column="1" Classes="chrome" Content="&#xE921;" Click="OnMinimize" ToolTip.Tip="Minimizar" />
+        <Button Grid.Column="2" Classes="chrome close" x:Name="CloseButton" Content="&#xE8BB;" Click="OnCancel" ToolTip.Tip="Cerrar" />
+      </Grid>
+
+      <!-- Pie con navegación -->
+      <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource St.LineBrush}" BorderThickness="0,1,0,0" Padding="40,14">
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+          <Button Classes="link" x:Name="ProjectLink" Click="OnProject" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Classes="icon" Text="&#xE774;" FontSize="12" />
+              <TextBlock Text="Proyecto en GitHub" FontSize="12" />
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="1" Classes="ghost" x:Name="BackButton" Content="Atrás" Margin="0,0,8,0" Click="OnBack" />
+          <Button Grid.Column="2" Classes="primary" x:Name="NextButton" Content="Siguiente" Click="OnNext" IsDefault="True" />
+          <Button Grid.Column="3" Classes="ghost" x:Name="CancelButton" Content="Cancelar" Margin="8,0,0,0" Click="OnCancel" />
+        </Grid>
+      </Border>
+
+      <Panel Margin="40,8,40,20">
+
+        <!-- 1. Bienvenida -->
+        <StackPanel x:Name="WelcomePage" Spacing="18">
+          <StackPanel Spacing="6">
+            <TextBlock x:Name="WelcomeTitle" Classes="h1" Text="Bienvenido a LiveStream" />
+            <TextBlock Classes="lead" Text="Un estudio de producción y transmisión en directo para Windows. Este asistente lo deja listo en menos de un minuto." />
+          </StackPanel>
+          <UniformGrid Columns="2" Rows="2">
+            <Border Classes="card" Margin="0,0,6,6">
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Classes="iconTile"><TextBlock Classes="icon" Text="&#xE714;" Foreground="{StaticResource St.CyanBrush}" /></Border>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="2">
+                  <TextBlock Classes="h2" Text="Estudio tipo OBS" />
+                  <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Text="Escenas, fuentes, editor del lienzo y mezclador." />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <Border Classes="card" Margin="6,0,0,6">
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Classes="iconTile"><TextBlock Classes="icon" Text="&#xE7F4;" Foreground="#FF7B8CFF" /></Border>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="2">
+                  <TextBlock Classes="h2" Text="Producción de TV" />
+                  <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Text="Transiciones, filtros y gráficos animados." />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <Border Classes="card" Margin="0,6,6,0">
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Classes="iconTile"><TextBlock Classes="icon" Text="&#xE909;" Foreground="#FFD06BFF" /></Border>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="2">
+                  <TextBlock Classes="h2" Text="Multistream" />
+                  <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Text="YouTube, Twitch, Facebook, Kick y TikTok a la vez." />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <Border Classes="card" Margin="6,6,0,0">
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Classes="iconTile"><TextBlock Classes="icon" Text="&#xE99A;" Foreground="{StaticResource St.RedBrush}" /></Border>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="2">
+                  <TextBlock Classes="h2" Text="Asistente de IA" />
+                  <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Text="Opera el estudio en lenguaje natural." />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </UniformGrid>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Classes="icon" Text="&#xE72E;" FontSize="13" Foreground="{StaticResource St.TextMutedBrush}" />
+            <TextBlock Classes="muted" FontSize="12" Text="Instalación solo para tu usuario · no necesita permisos de administrador" />
+          </StackPanel>
+        </StackPanel>
+
+        <!-- 2. Opciones -->
+        <StackPanel x:Name="OptionsPage" Spacing="18" IsVisible="False">
+          <StackPanel Spacing="6">
+            <TextBlock Classes="h1" Text="Elige cómo instalar" />
+            <TextBlock Classes="lead" Text="Los valores recomendados ya están seleccionados." />
+          </StackPanel>
+          <StackPanel Spacing="8">
+            <TextBlock Classes="h2" Text="Carpeta de instalación" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox x:Name="DirectoryBox" />
+              <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0" Click="OnBrowse">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Classes="icon" Text="&#xE838;" FontSize="13" />
+                  <TextBlock Text="Examinar…" />
+                </StackPanel>
+              </Button>
+            </Grid>
+            <TextBlock x:Name="SpaceText" Classes="muted" FontSize="12" />
+          </StackPanel>
+          <StackPanel Spacing="4">
+            <TextBlock Classes="h2" Text="Accesos directos" Margin="0,0,0,4" />
+            <CheckBox x:Name="StartMenuCheck" Content="Añadir al menú Inicio" IsChecked="True" />
+            <CheckBox x:Name="DesktopCheck" Content="Crear acceso directo en el escritorio" />
+          </StackPanel>
+          <Border Classes="card">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Classes="icon" Text="&#xE946;" VerticalAlignment="Top" Foreground="{StaticResource St.CyanBrush}" />
+              <TextBlock Grid.Column="1" Margin="12,0,0,0" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                         Text="Tus proyectos, ajustes y claves cifradas se guardan en %APPDATA%\LiveStream y se conservan al actualizar o desinstalar." />
+            </Grid>
+          </Border>
+        </StackPanel>
+
+        <!-- 3. Instalando -->
+        <DockPanel x:Name="InstallPage" IsVisible="False">
+          <StackPanel DockPanel.Dock="Top" Spacing="6">
+            <TextBlock x:Name="InstallTitle" Classes="h1" Text="Instalando LiveStream" />
+            <TextBlock Classes="lead" Text="Esto tarda unos segundos. Puedes seguir usando tu equipo." />
+          </StackPanel>
+          <StackPanel DockPanel.Dock="Top" Margin="0,30,0,0" Spacing="10">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock x:Name="StatusText" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Bottom" Text="Preparando…" />
+              <TextBlock Grid.Column="1" x:Name="PercentText" FontSize="30" FontWeight="SemiBold" Text="0 %" />
+            </Grid>
+            <ProgressBar x:Name="Progress" Classes="brand" Minimum="0" Maximum="1" />
+          </StackPanel>
+          <!-- Mientras espera: invitación a auspiciar -->
+          <Border Classes="sponsor" VerticalAlignment="Bottom">
+            <Grid ColumnDefinitions="Auto,*">
+              <Border Classes="iconTile" Background="#33FF2D8A" VerticalAlignment="Top">
+                <TextBlock Classes="icon" Text="&#xEB51;" Foreground="{StaticResource St.PinkBrush}" />
+              </Border>
+              <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="4">
+                <TextBlock Classes="h2" Text="LiveStream crece gracias a quienes lo auspician" />
+                <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                           Text="Cada aporte financia nuevas funciones, pruebas con más equipos y soporte para más plataformas. Al terminar te contamos cómo sumarte." />
+              </StackPanel>
+            </Grid>
+          </Border>
+        </DockPanel>
+
+        <!-- 4. Listo + auspicio -->
+        <StackPanel x:Name="DonePage" Spacing="16" IsVisible="False">
+          <Grid ColumnDefinitions="Auto,*">
+            <Border Width="48" Height="48" CornerRadius="24" Background="{StaticResource St.BrandBrush}" VerticalAlignment="Top">
+              <TextBlock Classes="icon" Text="&#xE73E;" FontSize="22" Foreground="White" />
+            </Border>
+            <StackPanel Grid.Column="1" Margin="16,0,0,0" Spacing="4">
+              <TextBlock Classes="h1" Text="¡LiveStream está listo!" />
+              <TextBlock x:Name="DoneText" Classes="lead" Text="Lo encontrarás en el menú Inicio." />
+            </StackPanel>
+          </Grid>
+          <CheckBox x:Name="LaunchCheck" Content="Abrir LiveStream al finalizar" IsChecked="True" />
+
+          <Border Classes="sponsor">
+            <StackPanel Spacing="12">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="eyebrow" Text="AUSPICIA LIVESTREAM" />
+                <TextBlock Classes="h2" FontSize="17" Text="Pon tu marca frente a creadores en directo" />
+                <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                           Text="LiveStream es un proyecto independiente. Con tu auspicio seguimos mejorándolo, y tu marca aparece aquí y en la página del proyecto." />
+              </StackPanel>
+              <UniformGrid Columns="3">
+                <Panel Margin="0,0,4,0">
+                  <Rectangle Classes="slot" />
+                  <TextBlock Text="Tu marca aquí" Classes="muted" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Panel>
+                <Panel Margin="4,0">
+                  <Rectangle Classes="slot" />
+                  <TextBlock Text="Tu marca aquí" Classes="muted" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Panel>
+                <Panel Margin="4,0,0,0">
+                  <Rectangle Classes="slot" />
+                  <TextBlock Text="Tu marca aquí" Classes="muted" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Panel>
+              </UniformGrid>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Classes="heart" Click="OnSponsor">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Classes="icon" Text="&#xEB51;" FontSize="14" Foreground="White" />
+                    <TextBlock Text="Patrocinar en GitHub" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="ghost" Click="OnBrands">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Classes="icon" Text="&#xE821;" FontSize="14" />
+                    <TextBlock Text="Auspiciar como marca" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Error -->
+        <StackPanel x:Name="ErrorPage" Spacing="16" IsVisible="False">
+          <Grid ColumnDefinitions="Auto,*">
+            <Border Width="48" Height="48" CornerRadius="24" Background="#33FF3B4E" VerticalAlignment="Top">
+              <TextBlock Classes="icon" Text="&#xE783;" FontSize="22" Foreground="{StaticResource St.RedBrush}" />
+            </Border>
+            <StackPanel Grid.Column="1" Margin="16,0,0,0" Spacing="6">
+              <TextBlock Classes="h1" Text="No se pudo instalar" />
+              <SelectableTextBlock x:Name="ErrorText" Foreground="{StaticResource St.TextMutedBrush}" FontSize="14" TextWrapping="Wrap" />
+            </StackPanel>
+          </Grid>
+          <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="64,0,0,0"
+                     Text="Tu instalación anterior, si la había, sigue intacta." />
+          <Button Classes="link" HorizontalAlignment="Left" Margin="60,0,0,0" Click="OnOpenLog">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Classes="icon" Text="&#xE9F9;" FontSize="12" />
+              <TextBlock Text="Ver el registro de instalación" FontSize="12" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Panel>
+    </DockPanel>
+  </Grid>
+</Window>

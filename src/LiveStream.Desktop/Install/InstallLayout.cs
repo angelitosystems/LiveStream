@@ -23,6 +23,9 @@ internal static class InstallLayout
     public static string ShortcutPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), $"{AppName}.lnk");
 
+    public static string DesktopShortcutPath =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), $"{AppName}.lnk");
+
     public static string? RegisteredDirectory
     {
         get
@@ -51,14 +54,14 @@ internal static class InstallLayout
 
     public static void Unregister() => Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, throwOnMissingSubKey: false);
 
-    /// <summary>Acceso del menú Inicio mediante el objeto COM de Windows Script Host.</summary>
-    public static void CreateShortcut(string directory)
+    /// <summary>Acceso directo (por defecto, el del menú Inicio) mediante el objeto COM de Windows Script Host.</summary>
+    public static void CreateShortcut(string directory, string? shortcutPath = null)
     {
         var shellType = Type.GetTypeFromProgID("WScript.Shell") ?? throw new InvalidOperationException("WScript.Shell no disponible.");
         dynamic shell = Activator.CreateInstance(shellType)!;
         try
         {
-            dynamic link = shell.CreateShortcut(ShortcutPath);
+            dynamic link = shell.CreateShortcut(shortcutPath ?? ShortcutPath);
             link.TargetPath = Path.Combine(directory, ExeName);
             link.WorkingDirectory = directory;
             link.Description = "Producción y transmisión en directo";
@@ -73,8 +76,9 @@ internal static class InstallLayout
 
     public static void RemoveShortcut()
     {
-        if (File.Exists(ShortcutPath))
-            File.Delete(ShortcutPath);
+        foreach (var path in new[] { ShortcutPath, DesktopShortcutPath })
+            if (File.Exists(path))
+                File.Delete(path);
     }
 
     /// <summary>¿Es una carpeta instalada por el instalador (marcada y registrada)? Protege carpetas de desarrollo.</summary>

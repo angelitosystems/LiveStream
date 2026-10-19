@@ -91,3 +91,10 @@ comandos que valida, serializa y permite deshacer.
 LiveStream enlaza **libobs (GPL-2.0-or-later)**. Los componentes de terceros y sus licencias están en
 [docs/THIRD-PARTY-NOTICES.md](docs/THIRD-PARTY-NOTICES.md). El modelo de licencia para distribuir LiveStream a
 terceros está pendiente de revisión legal.
+
+## Auspicia LiveStream
+
+LiveStream es un proyecto independiente. Si te resulta útil, puedes apoyarlo en
+[GitHub Sponsors](https://github.com/sponsors/angelitosystems); si representas a una marca y quieres auspiciarlo,
+escríbenos en las [Discusiones del repositorio](https://github.com/angelitosystems/LiveStream/discussions). El
+instalador muestra estos mismos enlaces (se cambian en `tools/LiveStream.Setup/Sponsorship.cs`).
