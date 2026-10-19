@@ -127,6 +127,7 @@ public sealed class RemoveItemCommand(Guid itemId) : IReversibleStudioCommand
     private SceneItem? _item;
     private int _index;
     private Source? _orphan;
+    private int _orphanIndex;
 
     public string Description => "Eliminar elemento";
 
@@ -152,6 +153,7 @@ public sealed class RemoveItemCommand(Guid itemId) : IReversibleStudioCommand
 
         var source = context.Project.GetSource(item.SourceId);
         var stillUsed = context.Project.Scenes.Any(s => s.Items.Any(i => i.SourceId == source.Id));
+        _orphanIndex = context.Project.IndexOfSource(source.Id);
         _orphan = !stillUsed && source.GlobalAudioChannel == 0 ? context.Project.RemoveSource(source.Id) : null;
 
         if (!context.Engine.IsInitialized)
@@ -166,7 +168,7 @@ public sealed class RemoveItemCommand(Guid itemId) : IReversibleStudioCommand
         if (_item is null)
             return;
         if (_orphan is not null)
-            context.Project.AddSource(_orphan);
+            context.Project.AddSource(_orphan, _orphanIndex); // en su sitio: el orden de fuentes también es estado
         context.Project.GetScene(_sceneId).InsertItem(_item, _index);
 
         if (!context.Engine.IsInitialized)

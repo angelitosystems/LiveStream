@@ -152,6 +152,58 @@ public sealed partial class MainWindow : Window
 
     private void OnPerformance(object? sender, RoutedEventArgs e) => PerformanceWindow.Show(Vm);
 
+    /// <summary>Busca, descarga y verifica una actualización firmada; el instalador se ejecuta al cerrar la app.</summary>
+    private async void OnCheckUpdates(object? sender, RoutedEventArgs e) => await Guard("Actualizaciones", async () =>
+    {
+        if (Infrastructure.Updates.UpdateClient.EmbeddedPublicKey() is not { } key)
+        {
+            await Vm.Dialogs.InfoAsync("Actualizaciones",
+                "Esta compilación no incluye la clave pública de publicación, así que no puede verificar actualizaciones. " +
+                "Instala las versiones nuevas con su instalador.");
+            return;
+        }
+        if (Vm.Machine.Load().UpdateFeedUrl is not { Length: > 0 } feed || !Uri.TryCreate(feed, UriKind.Absolute, out var feedUri))
+        {
+            await Vm.Dialogs.InfoAsync("Actualizaciones",
+                $"No hay canal de actualizaciones configurado en este equipo («updateFeedUrl» en {Vm.Machine.Path}).");
+            return;
+        }
+        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        var client = new Infrastructure.Updates.UpdateClient(http, key);
+        Vm.StatusMessage = "Buscando actualizaciones…";
+        var current = Infrastructure.Updates.UpdateClient.CurrentVersion;
+        switch (await client.CheckAsync(feedUri, current, CancellationToken.None))
+        {
+            case Infrastructure.Updates.UpdateCheckResult.UpToDate up:
+                Vm.StatusMessage = $"StreamPilot {up.Version} está al día.";
+                await Vm.Dialogs.InfoAsync("Actualizaciones", Vm.StatusMessage);
+                return;
+            case Infrastructure.Updates.UpdateCheckResult.Rejected rejected:
+                Vm.StatusMessage = rejected.Reason;
+                await Vm.Dialogs.InfoAsync("Actualización rechazada", rejected.Reason);
+                return;
+            case Infrastructure.Updates.UpdateCheckResult.Available available:
+                var m = available.Manifest;
+                if (!await Vm.Dialogs.ConfirmAsync("Actualización disponible",
+                        $"StreamPilot {m.Version} (tienes {current.ToString(3)}). {m.Notes}\n\nSe descargarán {m.Size / 1048576.0:0} MB, se verificará la firma y se instalará al cerrar StreamPilot.",
+                        "Descargar"))
+                    return;
+                if (Vm.IsStreaming || Vm.IsRecording)
+                {
+                    await Vm.Dialogs.InfoAsync("Actualizaciones", "Detén la transmisión y la grabación antes de actualizar.");
+                    return;
+                }
+                var path = await client.DownloadAsync(m, Path.Combine(Path.GetTempPath(), "StreamPilot", "updates"),
+                    new Progress<double>(p => Vm.StatusMessage = $"Descargando actualización… {p:P0}"), CancellationToken.None);
+                Vm.StatusMessage = "Actualización descargada y verificada.";
+                if (!await Vm.Dialogs.ConfirmAsync("Instalar actualización", "La firma y el contenido son correctos. ¿Cerrar StreamPilot e instalar ahora?", "Instalar"))
+                    return;
+                Process.Start(new ProcessStartInfo(path, $"/waitpid {Environment.ProcessId} /launch") { UseShellExecute = true });
+                Close();
+                return;
+        }
+    });
+
     private async void OnDestinations(object? sender, RoutedEventArgs e) => await Guard("Destinos", () => DestinationsDialog.ShowAsync(Vm));
 
     private async void OnSettings(object? sender, RoutedEventArgs e) => await Guard("Ajustes", () => StudioDialogs.ShowSettingsAsync(Vm));

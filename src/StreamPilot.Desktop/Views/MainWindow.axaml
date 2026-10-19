@@ -89,6 +89,7 @@
           </MenuItem>
           <MenuItem Header="Ay_uda">
             <MenuItem Header="Atajos de teclado" Click="OnShortcuts" />
+            <MenuItem Header="Buscar actualizaciones…" Click="OnCheckUpdates" />
             <MenuItem Header="Acerca de StreamPilot" Click="OnAbout" />
           </MenuItem>
         </Menu>

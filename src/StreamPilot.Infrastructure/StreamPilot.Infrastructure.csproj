@@ -9,4 +9,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="StreamPilot.UnitTests" />
   </ItemGroup>
+  <!-- Clave pública de publicación (scripts/new-release-key.ps1). Sin ella, las actualizaciones quedan desactivadas. -->
+  <ItemGroup Condition="Exists('Updateselease-public-key.pem')">
+    <EmbeddedResource Include="Updateselease-public-key.pem" LogicalName="release-public-key.pem" />
+  </ItemGroup>
 </Project>

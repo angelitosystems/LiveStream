@@ -161,12 +161,14 @@ public sealed class StudioProject
 
     public int IndexOfScene(Guid sceneId) => _scenes.FindIndex(s => s.Id == sceneId);
 
-    public void AddSource(Source source)
+    public void AddSource(Source source, int? index = null)
     {
         if (_sources.Any(s => s.Id == source.Id))
             throw new InvalidOperationException($"La fuente {source.Id} ya existe.");
-        _sources.Add(source);
+        _sources.Insert(Math.Clamp(index ?? _sources.Count, 0, _sources.Count), source);
     }
+
+    public int IndexOfSource(Guid sourceId) => _sources.FindIndex(s => s.Id == sourceId);
 
     /// <summary>Elimina la fuente y todos sus elementos en cualquier escena.</summary>
     public Source RemoveSource(Guid sourceId)

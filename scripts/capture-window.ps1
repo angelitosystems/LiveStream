@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-  Captura a PNG una ventana de un proceso (verificación visual sin interacción).
+  Captura a PNG una ventana de un proceso (verificación visual sin interacción). Usa PrintWindow: solo el
+  contenido de esa ventana, nunca lo que haya encima en la pantalla.
 .PARAMETER WindowTitle
   Título exacto de otra ventana del mismo proceso (p. ej. un diálogo). Por defecto, la ventana principal.
 #>
@@ -24,6 +25,7 @@ public static class SpCapture {
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     public static IntPtr Find(uint pid, string title) {
         IntPtr found = IntPtr.Zero;
@@ -41,14 +43,17 @@ public static class SpCapture {
 [SpCapture]::SetProcessDPIAware() | Out-Null
 $handle = if ($WindowTitle) { [SpCapture]::Find([uint32]$ProcessId, $WindowTitle) } else { (Get-Process -Id $ProcessId).MainWindowHandle }
 if ($handle -eq [IntPtr]::Zero) { throw "No se encontró la ventana '$WindowTitle' del proceso $ProcessId." }
-[SpCapture]::SetForegroundWindow($handle) | Out-Null
-Start-Sleep -Milliseconds 400
 $r = New-Object SpCapture+RECT
 [SpCapture]::GetWindowRect($handle, [ref] $r) | Out-Null
 $w = $r.Right - $r.Left; $h = $r.Bottom - $r.Top
 $bmp = New-Object System.Drawing.Bitmap $w, $h
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($r.Left, $r.Top, 0, 0, $bmp.Size)
+# PrintWindow pinta solo la ventana pedida (aunque esté tapada): nunca captura otras aplicaciones del escritorio.
+# PW_RENDERFULLCONTENT (2) incluye el contenido Direct3D de la vista previa.
+$hdc = $g.GetHdc()
+$ok = [SpCapture]::PrintWindow($handle, $hdc, 2)
+$g.ReleaseHdc($hdc)
+if (-not $ok) { $g.Dispose(); $bmp.Dispose(); throw 'PrintWindow falló; no se captura la pantalla como alternativa.' }
 $bmp.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
 Write-Host "Captura: $OutputPath ($w x $h)"

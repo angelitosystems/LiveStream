@@ -79,7 +79,11 @@ if ($Mode -eq 'Prebuilt') {
     # Runtime autocontenido: bin/64bit + obs-plugins/64bit + data, misma estructura que OBS.
     if (Test-Path $runtime) { Remove-Item -Recurse -Force $runtime }
     New-Item -ItemType Directory -Force $runtime | Out-Null
-    Copy-Item -Recurse (Join-Path $ObsInstallDir 'bin\64bit\*') $runtime -Exclude 'obs64.exe', 'obs-browser-page.exe'
+    # Fuera lo que solo usa la interfaz de OBS (Qt, API del frontend, scripting): libobs y los plugins del motor
+    # no lo necesitan, y no distribuirlo reduce tamaño y licencias de terceros (Qt es LGPL).
+    $notForEngine = 'obs64.exe', 'obs-browser-page.exe', 'Qt6*.dll', 'iconengines', 'imageformats', 'platforms', 'styles',
+                    'obs-frontend-api.*', 'obs-scripting.*', 'lua51.dll'
+    Copy-Item -Recurse (Join-Path $ObsInstallDir 'bin\64bit\*') $runtime -Exclude $notForEngine
     $pluginBin = Join-Path $runtime 'obs-plugins\64bit'
     $pluginData = Join-Path $runtime 'data\obs-plugins'
     New-Item -ItemType Directory -Force $pluginBin, $pluginData | Out-Null

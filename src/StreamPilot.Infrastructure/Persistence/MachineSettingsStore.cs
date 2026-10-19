@@ -3,7 +3,8 @@ using System.Text.Json;
 namespace StreamPilot.Infrastructure.Persistence;
 
 /// <summary>Ajustes de este equipo (no del proyecto): dependen del hardware, no del estudio.</summary>
-public sealed record MachineSettings(int RenderAdapterIndex = 0, bool AdaptiveBitrate = true);
+/// <param name="UpdateFeedUrl">URL HTTPS del manifiesto firmado de actualizaciones (update.json); null = sin canal.</param>
+public sealed record MachineSettings(int RenderAdapterIndex = 0, bool AdaptiveBitrate = true, string? UpdateFeedUrl = null);
 
 /// <summary>%APPDATA%\StreamPilot\machine.json. Un archivo dañado no impide arrancar: se usan los valores por defecto.</summary>
 public sealed class MachineSettingsStore(string? path = null)

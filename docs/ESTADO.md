@@ -1,6 +1,6 @@
 # Estado real del proyecto
 
-Actualizado al cierre de la **Fase 6 — Multistream**. Solo se marca como hecho lo verificado contra libobs real
+Actualizado al cierre de la **Fase 7 — Calidad y distribución** (versión 0.7.0). Solo se marca como hecho lo verificado contra libobs real
 en esta máquina (i7-13650HX, Intel UHD + RTX 4050 Laptop, Windows 11, pantalla al 125 %).
 
 ## Fase 1 — Motor (completada)
@@ -113,6 +113,25 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 3. **Pruebas con ffmpeg de Chocolatey**: `ffmpeg.exe` es un lanzador; matar solo ese proceso dejaba vivo el servidor.
    Las pruebas cierran ahora el árbol completo de procesos.
 
+## Fase 7 — Calidad y distribución (completada, con las limitaciones de abajo)
+
+| Área | Implementado | Verificación |
+|---|---|---|
+| Robustez del estudio | Prueba de propiedades: 40 secuencias aleatorias de 150 comandos; un comando rechazado no cambia nada, deshacer todo devuelve exactamente el estado inicial (proyecto y motor) y rehacer todo el final. 2000 archivos de proyecto corruptos (truncados, caracteres cambiados, tipos erróneos) solo producen errores controlados | 41 pruebas unitarias |
+| Resistencia | `tools/StreamPilot.Soak`: estudio real con captura, texto, gráficos animados, grabación y emisión local, cambiando de escena, editando y deshaciendo sin parar; mide memoria, handles, render, codificación y pérdidas | Soak de 20 min en este equipo: 0 errores, memoria +0,5 MB/min y handles +0,3/min (sin crecimiento sostenido), 0,01 % de fotogramas tarde, 0 descartes al codificar, 0 perdidos de ~34 000 emitidos, grabación activa todo el tiempo y cierre limpio |
+| Runtime | Fuera Qt, la API del frontend de OBS, scripting y Lua (no los usa el motor): 163 → 132 MB con símbolos; los .pdb van en un paquete aparte | Integración completa de todas las fases sin esos componentes |
+| Instalador | `scripts/package.ps1` publica la app autocontenida y genera instalador por usuario (sin administrador), paquete portable, símbolos y SHA-256. Instalación atómica con vuelta atrás, acceso en el menú Inicio, entrada en «Aplicaciones instaladas», negativa a instalar con la app abierta, desinstalación que conserva los datos del usuario y solo borra una carpeta marcada y registrada | Ciclo real en este equipo: instalar → la app arranca el motor desde la carpeta instalada → reinstalar con la app abierta (rechazado, código 3) → actualizar → desinstalar (carpeta, registro y acceso eliminados; datos conservados) → `--uninstall` en la copia de desarrollo no borra nada (código 4) |
+| Actualizaciones firmadas | Manifiesto con versión, URL, tamaño y SHA-256 firmado con ECDSA P-256; clave privada fuera del repositorio (`scripts/new-release-key.ps1`), firma con `scripts/sign-update.ps1`, clave pública compilada en la app; solo HTTPS; descarga verificada antes de ejecutar; «Ayuda → Buscar actualizaciones…» | 5 pruebas con un servidor HTTP local: versión nueva, manifiesto manipulado, clave ajena, sin firma, instalador alterado o más grande, canal sin HTTPS; un manifiesto firmado por el script de PowerShell se verifica en la app |
+| Licencias | `scripts/third-party-inventory.ps1` genera `docs/THIRD-PARTY-NOTICES.md` (licencias de los 30 paquetes .NET leídas de sus metadatos y tabla de componentes nativos) y se incluye en cada paquete | Inventario generado |
+
+### Fallos encontrados y corregidos en la Fase 7
+
+1. **Deshacer «Mostrar/Ocultar» y «Bloquear/Desbloquear»** invertía el valor en vez de restaurar el anterior: «Mostrar» un
+   elemento ya visible y deshacer lo ocultaba.
+2. **Deshacer «Eliminar elemento»** reinsertaba la fuente huérfana al final de la lista en vez de en su posición.
+3. **`scripts/capture-window.ps1`** copiaba la región de la pantalla: si otra ventana quedaba encima, la capturaba. Ahora
+   usa `PrintWindow` (solo la ventana pedida); esta versión del script no se ha vuelto a ejecutar.
+
 ## Limitaciones conocidas (reales, no simuladas)
 
 - **Paneles acoplables**: son redimensionables y se pueden restaurar, pero no se pueden arrastrar a otra posición ni
@@ -154,11 +173,19 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 - **Multistream con resoluciones distintas** (p. ej. horizontal a una plataforma y vertical a otra): no soportado; todos
   los destinos emiten el mismo lienzo. Cada destino puede tener su propio codificador y bitrate.
 - **Límites de plataformas**: solo se aplican los documentados con certeza (RTMPS en Facebook, 6000 kb/s en Twitch).
-- **Licencia**: libobs es GPLv2+. Hay que decidir el modelo de distribución con asesoría legal antes de vender.
+- **Licencia**: libobs es GPLv2+. Hay que decidir el modelo de distribución con asesoría legal antes de vender o
+  distribuir a terceros (ver `docs/THIRD-PARTY-NOTICES.md`). La licencia exacta de la compilación de FFmpeg y de
+  pthreads incluidas está marcada «a confirmar».
+- **Sin firma de código (Authenticode)**: no hay certificado; SmartScreen avisará al instalar.
+- **Actualizaciones**: el cliente y el instalador están verificados por separado, pero el flujo completo desde la app
+  (descargar → cerrar → instalar → reabrir) no se ha ejecutado de extremo a extremo; tampoco hay todavía un canal
+  publicado ni clave de publicación generada (decisión del responsable de la publicación).
+- **Instalador sin interfaz propia**: usa cuadros de diálogo de Windows (confirmar, resultado); no muestra progreso.
 
 ## Pendiente
 
-- **Fase 7** — Calidad y distribución.
+- Las fases 1–7 del plan están implementadas. Lo pendiente es lo indicado en las limitaciones: pruebas contra
+  plataformas reales y la API de Claude con credenciales, relay SRS/MediaMTX, firma de código y la decisión de licencia.
 
 ## Cómo ejecutar y verificar
 
@@ -168,6 +195,8 @@ dotnet build StreamPilot.sln
 dotnet test StreamPilot.sln         # unitarias + integración contra libobs real (requiere GPU y escritorio)
 dotnet run --project src/StreamPilot.Desktop -- --project ruta\al\proyecto.spproj
 ./scripts/ui-drag-test.ps1 -ProcessId <pid> -ProjectPath <proyecto> -ItemName <fuente>   # prueba del editor
+./scripts/package.ps1                # instalador, portable, símbolos (ver docs/DISTRIBUCION.md)
+dotnet run --project tools/StreamPilot.Soak -c Release -- --minutes 60   # prueba de resistencia
 ./scripts/ui-invoke.ps1 -ProcessId <pid> -Name "Añadir gráfico"   # pulsa un control por su nombre accesible (-List los muestra)
 # Asistente: clave en el panel (se guarda cifrada) o variable ANTHROPIC_API_KEY
 ```

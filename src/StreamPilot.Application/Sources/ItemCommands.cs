@@ -66,9 +66,16 @@ public sealed class SetItemVisibleCommand(Guid itemId, bool visible) : IReversib
 
     public string? Validate(StudioContext context) => ItemGuard.Validate(context, itemId);
 
-    public Task ExecuteAsync(StudioContext context, CancellationToken ct) => Apply(context, visible, ct);
+    private bool _previous;
 
-    public Task UndoAsync(StudioContext context, CancellationToken ct) => Apply(context, !visible, ct);
+    public Task ExecuteAsync(StudioContext context, CancellationToken ct)
+    {
+        // Se guarda el valor anterior: «Mostrar» sobre un elemento ya visible no debe ocultarlo al deshacer.
+        _previous = context.Project.FindItem(itemId).Item.Visible;
+        return Apply(context, visible, ct);
+    }
+
+    public Task UndoAsync(StudioContext context, CancellationToken ct) => Apply(context, _previous, ct);
 
     private async Task Apply(StudioContext context, bool value, CancellationToken ct)
     {
@@ -84,9 +91,15 @@ public sealed class SetItemLockedCommand(Guid itemId, bool locked) : IReversible
 
     public string? Validate(StudioContext context) => ItemGuard.Validate(context, itemId);
 
-    public Task ExecuteAsync(StudioContext context, CancellationToken ct) => Apply(context, locked, ct);
+    private bool _previous;
 
-    public Task UndoAsync(StudioContext context, CancellationToken ct) => Apply(context, !locked, ct);
+    public Task ExecuteAsync(StudioContext context, CancellationToken ct)
+    {
+        _previous = context.Project.FindItem(itemId).Item.Locked;
+        return Apply(context, locked, ct);
+    }
+
+    public Task UndoAsync(StudioContext context, CancellationToken ct) => Apply(context, _previous, ct);
 
     private async Task Apply(StudioContext context, bool value, CancellationToken ct)
     {
