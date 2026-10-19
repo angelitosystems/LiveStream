@@ -67,9 +67,10 @@ El canal debe ser HTTPS (HTTP solo hacia el propio equipo, para pruebas).
 
 ## Firma de código (Authenticode)
 
-No hay certificado de firma de código, así que los `.exe` no están firmados y SmartScreen avisará al instalar. Cuando
-haya certificado, se firma `LiveStream-Setup-<versión>.exe` y `LiveStream.Desktop.exe` con `signtool` antes de
-generar `update.json` (el SHA-256 firmado debe ser el del instalador final).
+La firma la hace SignPath Foundation en GitHub Actions al subir un tag `v*`; la puesta en marcha y el proceso están en
+[FIRMA.md](FIRMA.md). `scripts/package.ps1` trabaja por etapas (`-Stage App`, `Installer`, `Checksums`) para firmar
+la aplicación antes de incrustarla en el instalador y el instalador antes de calcular las sumas y `update.json`. Con
+un certificado propio se puede firmar en local con `-CertificateThumbprint`.
 
 ## Pruebas de resistencia
 

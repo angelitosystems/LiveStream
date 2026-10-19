@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configuración de artefacto «app» de SignPath: la aplicación publicada (artifacts/publish/LiveStream, subida como
+     artefacto de GitHub). Firma solo los binarios propios; los de terceros (libobs, FFmpeg, .NET…) quedan como están. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="LiveStream.Desktop.exe">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="livestream_bridge.dll">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file-set>
+      <include path="LiveStream.*.dll" min-matches="5" max-matches="unbounded" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

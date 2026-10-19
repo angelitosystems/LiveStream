@@ -1,0 +1,137 @@
+# Compila, firma (SignPath) y publica LiveStream.
+#   - Al subir un tag v*: genera la distribución firmada y la adjunta a la release de ese tag (borrador si no existe).
+#   - Manual (workflow_dispatch): solo compila y deja los archivos como artefactos del workflow, para probar.
+# La firma Authenticode se activa cuando existe la variable SIGNPATH_ORGANIZATION_ID y el secreto SIGNPATH_API_TOKEN
+# (ver docs/FIRMA.md). Sin ellos, el workflow funciona igual pero los .exe salen sin firmar.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write  # crear/actualizar la release
+  actions: read    # SignPath descarga los artefactos de este workflow
+
+env:
+  OBS_VERSION: '32.2.2'
+  SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Binarios de OBS Studio ${{ env.OBS_VERSION }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download $env:OBS_VERSION -R obsproject/obs-studio -p "OBS-Studio-$env:OBS_VERSION-Windows-x64.zip" -D $env:RUNNER_TEMP
+          Expand-Archive "$env:RUNNER_TEMP/OBS-Studio-$env:OBS_VERSION-Windows-x64.zip" "$env:RUNNER_TEMP/obs"
+
+      - name: Puente nativo y runtime de libobs
+        run: ./scripts/build-native.ps1 -ObsTag $env:OBS_VERSION -ObsInstallDir "$env:RUNNER_TEMP/obs"
+
+      - name: Pruebas unitarias
+        run: dotnet test tests/LiveStream.UnitTests -c Release --nologo
+
+      - name: Aplicación
+        run: ./scripts/package.ps1 -Stage App
+
+      - name: Subir la aplicación para firmar
+        id: app-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-unsigned
+          path: artifacts/publish/LiveStream/
+          retention-days: 3
+
+      - name: Firmar la aplicación (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'LiveStream' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.app-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: artifacts/publish/LiveStream-signed
+
+      - name: Usar la aplicación firmada
+        if: env.SIGN == 'true'
+        run: |
+          Remove-Item -Recurse -Force artifacts/publish/LiveStream
+          Move-Item artifacts/publish/LiveStream-signed artifacts/publish/LiveStream
+          $sig = Get-AuthenticodeSignature artifacts/publish/LiveStream/LiveStream.Desktop.exe
+          if ($sig.Status -ne 'Valid') { throw "LiveStream.Desktop.exe no quedó firmado: $($sig.Status)" }
+
+      - name: Portable e instalador
+        run: ./scripts/package.ps1 -Stage Installer
+
+      - name: Subir el instalador para firmar
+        id: setup-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-unsigned
+          path: artifacts/release/LiveStream-Setup-*.exe
+          retention-days: 3
+
+      - name: Firmar el instalador (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'LiveStream' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.setup-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: artifacts/setup-signed
+
+      - name: Usar el instalador firmado
+        if: env.SIGN == 'true'
+        run: |
+          $signed = Get-ChildItem artifacts/setup-signed -Filter 'LiveStream-Setup-*.exe' | Select-Object -First 1
+          $sig = Get-AuthenticodeSignature $signed.FullName
+          if ($sig.Status -ne 'Valid') { throw "El instalador no quedó firmado: $($sig.Status)" }
+          Copy-Item -Force $signed.FullName artifacts/release/
+
+      - name: Sumas de comprobación
+        run: ./scripts/package.ps1 -Stage Checksums
+
+      - name: Guardar la distribución
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: artifacts/release/
+
+      - name: Adjuntar a la release del tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $files = Get-ChildItem artifacts/release -File | Where-Object Name -notlike '*-symbols.zip' | ForEach-Object FullName
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $files --clobber
+          } else {
+            gh release create $tag $files --draft --verify-tag --title "LiveStream $($tag.TrimStart('v'))" --notes "Ver CHANGELOG.md."
+          }
+          if ($LASTEXITCODE) { throw 'No se pudo publicar la release.' }

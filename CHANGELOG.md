@@ -3,6 +3,14 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versiones con
 [Versionado Semántico](https://semver.org/lang/es/).
 
+## [Sin publicar]
+
+### Añadido
+- Firma Authenticode de la aplicación y del instalador con SignPath Foundation desde GitHub Actions
+  (`.github/workflows/release.yml`, `docs/FIRMA.md`).
+- `scripts/package.ps1` por etapas (`-Stage App|Installer|Checksums`) y firma local opcional con
+  `-CertificateThumbprint`.
+
 ## [0.8.0] - 2026-10-19
 
 ### Añadido

@@ -104,6 +104,20 @@ comandos que valida, serializa y permite deshacer.
 - Las actualizaciones solo se aceptan si el manifiesto está firmado (ECDSA P-256) y el instalador coincide con el
   tamaño y SHA-256 firmados.
 
+## Firma de código
+
+Los ejecutables de LiveStream se firman con Authenticode en GitHub Actions a partir del código de este repositorio
+(proceso en [docs/FIRMA.md](docs/FIRMA.md)).
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- **Autores y revisores**: [colaboradores del repositorio](https://github.com/angelitosystems/LiveStream/graphs/contributors).
+- **Aprobación de firmas**: [Angel Calderon Mantilla](https://github.com/angelito-systems).
+- **Privacidad**: LiveStream no envía información a otros sistemas en red salvo cuando quien lo usa lo pide
+  expresamente: emitir a los destinos que configura, usar el asistente de IA con su propia clave de API de Anthropic
+  o buscar actualizaciones en el canal que configura.
+
 ## Licencia
 
 LiveStream es software libre: puedes redistribuirlo y modificarlo según los términos de la **GNU General Public
