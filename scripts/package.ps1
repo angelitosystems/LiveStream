@@ -4,7 +4,7 @@
     LiveStream-Setup-<versión>.exe     instalador por usuario (paquete incrustado)
     LiveStream-<versión>-portable.zip  la aplicación sin instalar
     LiveStream-<versión>-symbols.zip   símbolos de depuración (.pdb), no se distribuyen
-    SHA256SUMS.txt
+    SHA256SUMS.txt, LICENSE.txt, THIRD-PARTY-NOTICES.md
   Requiere el runtime de scripts/build-native.ps1. Con -SigningKey firma además el manifiesto de actualización
   (scripts/sign-update.ps1). Sin certificado de firma de código, los .exe no llevan firma Authenticode.
 #>
@@ -40,7 +40,11 @@ $pdbs = Get-ChildItem $publish -Recurse -Filter *.pdb
 Compress-Archive -Path $pdbs.FullName -DestinationPath $symbols -CompressionLevel Optimal
 $pdbs | Remove-Item
 & (Join-Path $PSScriptRoot 'third-party-inventory.ps1') -Output (Join-Path $publish 'THIRD-PARTY-NOTICES.md') | Out-Null
-Copy-Item (Join-Path $root 'docs/THIRD-PARTY-NOTICES.md') $out -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $publish 'THIRD-PARTY-NOTICES.md') $out
+Copy-Item (Join-Path $publish 'THIRD-PARTY-NOTICES.md') (Join-Path $root 'docs/THIRD-PARTY-NOTICES.md')
+# Licencia GPL-2.0-or-later: viaja con la aplicación y junto a la distribución.
+Copy-Item (Join-Path $root 'LICENSE') (Join-Path $publish 'LICENSE.txt')
+Copy-Item (Join-Path $root 'LICENSE') (Join-Path $out 'LICENSE.txt')
 
 Write-Host '3/5 Paquete portable…'
 $portable = Join-Path $out "LiveStream-$version-portable.zip"

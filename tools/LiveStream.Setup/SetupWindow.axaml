@@ -148,6 +148,10 @@
             <TextBlock Classes="icon" Text="&#xE72E;" FontSize="13" Foreground="{StaticResource St.TextMutedBrush}" />
             <TextBlock Classes="muted" FontSize="12" Text="Instalación solo para tu usuario · no necesita permisos de administrador" />
           </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,-10,0,0">
+            <TextBlock Classes="icon" Text="&#xE8D7;" FontSize="13" Foreground="{StaticResource St.TextMutedBrush}" />
+            <TextBlock Classes="muted" FontSize="12" Text="Software libre bajo licencia GPL-2.0-or-later, como OBS Studio" />
+          </StackPanel>
         </StackPanel>
 
         <!-- 2. Opciones -->

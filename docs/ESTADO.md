@@ -4,7 +4,7 @@
 > `%APPDATA%\StreamPilot` se trasladan a `%APPDATA%\LiveStream`. El prefijo interno `sp_` de la API C y la extensión
 > `.spproj` de los proyectos se mantienen por compatibilidad.
 
-Actualizado al cierre de la **Fase 7 — Calidad y distribución** (versión 0.7.0). Solo se marca como hecho lo verificado contra libobs real
+Actualizado a la versión 0.8.0 (cierre de la **Fase 7 — Calidad y distribución** más el asistente de instalación). Solo se marca como hecho lo verificado contra libobs real
 en esta máquina (i7-13650HX, Intel UHD + RTX 4050 Laptop, Windows 11, pantalla al 125 %).
 
 ## Fase 1 — Motor (completada)

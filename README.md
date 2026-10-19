@@ -1,12 +1,25 @@
-# LiveStream
+<p align="center">
+  <img src="Assets/generated/logo-512.png" alt="LiveStream" width="140" />
+</p>
 
-Estudio de producción y transmisión en directo para Windows, con motor **libobs** (el de OBS Studio), interfaz propia
-en **Avalonia/.NET 10**, grafismo de televisión, multistream, optimización adaptativa y un **asistente de IA** que opera
-el estudio con herramientas tipadas.
+<h1 align="center">LiveStream</h1>
 
-> Estado: versión **0.7.0**. Las siete fases del plan están implementadas y verificadas contra libobs real en
+<p align="center">
+  Estudio de producción y transmisión en directo para Windows.<br />
+  Motor <b>libobs</b> (el de OBS Studio) · interfaz en <b>Avalonia/.NET 10</b> · grafismo de TV · multistream ·
+  <b>asistente de IA</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/angelitosystems/LiveStream/releases"><img alt="Versión" src="https://img.shields.io/badge/versión-0.8.0-3d8bff" /></a>
+  <a href="LICENSE"><img alt="Licencia" src="https://img.shields.io/badge/licencia-GPL--2.0--or--later-b13cff" /></a>
+  <img alt="Plataforma" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-22d3ff" />
+  <a href="https://github.com/sponsors/angelitosystems"><img alt="Auspicia" src="https://img.shields.io/badge/♥-auspicia-ff2d8a" /></a>
+</p>
+
+> Estado: versión **0.8.0**. Las siete fases del plan están implementadas y verificadas contra libobs real en
 > Windows 11. Lo que no se ha podido probar (por ejemplo, emitir a plataformas reales sin credenciales) está detallado
-> en [docs/ESTADO.md](docs/ESTADO.md).
+> en [docs/ESTADO.md](docs/ESTADO.md). Los cambios de cada versión están en [CHANGELOG.md](CHANGELOG.md).
 
 ## Qué hace
 
@@ -29,9 +42,13 @@ el estudio con herramientas tipadas.
 
 ## Instalar
 
-Descarga `LiveStream-Setup-0.7.0.exe` de la sección **Releases** del repositorio y ejecútalo. Instala solo para tu
-usuario (no pide administrador) en `%LOCALAPPDATA%\Programs\LiveStream`, con acceso en el menú Inicio y desinstalación
-desde «Aplicaciones instaladas». También hay un `.zip` portable.
+Descarga `LiveStream-Setup-0.8.0.exe` de la sección [Releases](https://github.com/angelitosystems/LiveStream/releases)
+y ejecútalo. Un asistente te guía en cuatro pasos (bienvenida, opciones, instalación y listo): eliges la carpeta y si
+quieres acceso en el menú Inicio y en el escritorio. Instala solo para tu usuario (no pide administrador) en
+`%LOCALAPPDATA%\Programs\LiveStream` y se desinstala desde «Aplicaciones instaladas». También hay un `.zip` portable.
+
+Instalación desatendida: `LiveStream-Setup-0.8.0.exe /quiet [/dir <carpeta>] [/noshortcuts]` (detalles en
+[docs/DISTRIBUCION.md](docs/DISTRIBUCION.md)).
 
 Requisitos: Windows 10/11 x64 y una GPU con Direct3D 11. El instalador no está firmado con Authenticode, así que
 Windows SmartScreen puede mostrar un aviso.
@@ -71,7 +88,8 @@ Más detalles (actualizaciones firmadas, firma de código, prueba de resistencia
 | `src/LiveStream.Native` | Interop .NET con el puente nativo |
 | `src/LiveStream.Desktop` | Aplicación Avalonia |
 | `tests/` | Pruebas unitarias y de integración contra libobs real |
-| `tools/LiveStream.Setup` | Instalador por usuario |
+| `tools/LiveStream.Setup` | Instalador por usuario (asistente en Avalonia; modo `/quiet` sin interfaz) |
+| `Assets/` | Logo e icono originales; `Assets/generated` tiene las versiones con fondo transparente y el `.ico` |
 | `tools/LiveStream.Soak` | Prueba de resistencia de larga duración |
 | `scripts/` | Compilación nativa, empaquetado, firma de actualizaciones, inventario de licencias, automatización de la UI |
 
@@ -88,13 +106,22 @@ comandos que valida, serializa y permite deshacer.
 
 ## Licencia
 
-LiveStream enlaza **libobs (GPL-2.0-or-later)**. Los componentes de terceros y sus licencias están en
-[docs/THIRD-PARTY-NOTICES.md](docs/THIRD-PARTY-NOTICES.md). El modelo de licencia para distribuir LiveStream a
-terceros está pendiente de revisión legal.
+LiveStream es software libre: puedes redistribuirlo y modificarlo según los términos de la **GNU General Public
+License, versión 2 o (a tu elección) cualquier versión posterior** (GPL-2.0-or-later), la misma licencia que libobs.
+El texto completo está en [LICENSE](LICENSE). Se distribuye **sin ninguna garantía**.
+
+Si redistribuyes el instalador o el paquete portable, ofrece también el código fuente de esa versión (este repositorio,
+en su tag). Los componentes de terceros y sus licencias están en
+[docs/THIRD-PARTY-NOTICES.md](docs/THIRD-PARTY-NOTICES.md).
+
+© 2026 Angel Calderon Mantilla.
 
 ## Auspicia LiveStream
 
-LiveStream es un proyecto independiente. Si te resulta útil, puedes apoyarlo en
-[GitHub Sponsors](https://github.com/sponsors/angelitosystems); si representas a una marca y quieres auspiciarlo,
-escríbenos en las [Discusiones del repositorio](https://github.com/angelitosystems/LiveStream/discussions). El
-instalador muestra estos mismos enlaces (se cambian en `tools/LiveStream.Setup/Sponsorship.cs`).
+LiveStream es un proyecto independiente. Si te resulta útil:
+
+- **Personas**: apóyalo en [GitHub Sponsors](https://github.com/sponsors/angelitosystems).
+- **Marcas y empresas**: escríbenos en las [Discusiones del repositorio](https://github.com/angelitosystems/LiveStream/discussions);
+  tu marca aparecerá en el instalador y en esta página.
+
+El instalador muestra estos mismos enlaces (se cambian en `tools/LiveStream.Setup/Sponsorship.cs`).

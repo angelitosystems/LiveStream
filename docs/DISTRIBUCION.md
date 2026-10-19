@@ -1,7 +1,14 @@
 # Distribución de LiveStream
 
-> **Antes de distribuir a terceros:** LiveStream enlaza libobs (GPL-2.0-or-later). Hay que decidir el modelo de
-> licencia con asesoría legal (ver `docs/THIRD-PARTY-NOTICES.md`). Hasta entonces, usa el instalador solo internamente.
+> **Licencia:** LiveStream se distribuye bajo GPL-2.0-or-later (`LICENSE`), como libobs. Cada versión publicada debe
+> tener su código fuente disponible (tag en el repositorio). Componentes de terceros: `docs/THIRD-PARTY-NOTICES.md`.
+
+## Publicar una versión
+
+1. Sube `<Version>` en `Directory.Build.props` y añade la entrada en `CHANGELOG.md`.
+2. Genera y prueba la distribución (abajo).
+3. Crea el tag `v<versión>` y una release en GitHub con el instalador, el portable, `SHA256SUMS.txt`, `LICENSE.txt` y
+   `THIRD-PARTY-NOTICES.md` (los símbolos no se publican).
 
 ## Generar una versión
 
@@ -19,7 +26,8 @@ dotnet test LiveStream.sln             # unitarias + integración contra libobs 
 | `LiveStream-<versión>-portable.zip` | La aplicación sin instalar |
 | `LiveStream-<versión>-symbols.zip` | Símbolos de depuración; no se distribuye, se guarda para analizar fallos |
 | `SHA256SUMS.txt` | Sumas de comprobación |
-| `THIRD-PARTY-NOTICES.md` | Componentes de terceros y licencias |
+| `THIRD-PARTY-NOTICES.md` | Componentes de terceros y licencias (también se copia a `docs/`) |
+| `LICENSE.txt` | Licencia GPL-2.0-or-later (también va dentro de la aplicación) |
 
 La versión sale de `<Version>` en `Directory.Build.props`.
 
@@ -29,8 +37,11 @@ La versión sale de `<Version>` en `Directory.Build.props`.
 LiveStream-Setup-<versión>.exe [/quiet] [/dir <carpeta>] [/noshortcuts] [/waitpid <pid>] [/launch]
 ```
 
-- Instala en `%LOCALAPPDATA%\Programs\LiveStream`, crea el acceso del menú Inicio y la entrada de
-  «Aplicaciones instaladas» (HKCU). Nunca pide elevación.
+- Sin `/quiet` muestra un asistente (bienvenida, opciones, instalación con progreso, listo) con la invitación a
+  auspiciar; con `/quiet` instala sin interfaz. `/waitpid` lo usa la aplicación al actualizarse.
+- Instala en `%LOCALAPPDATA%\Programs\LiveStream` (o en la carpeta ya registrada), crea el acceso del menú Inicio
+  (y, si se elige en el asistente, el del escritorio) y la entrada de «Aplicaciones instaladas» (HKCU). Nunca pide
+  elevación.
 - Extrae la versión nueva al lado y la intercambia: si algo falla, la anterior queda intacta. Se niega a instalar si
   LiveStream está abierto desde esa carpeta.
 - Códigos de salida: `0` instalado, `1` error, `2` cancelado, `3` LiveStream abierto. Registro en
