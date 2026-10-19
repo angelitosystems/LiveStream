@@ -149,14 +149,16 @@ public sealed class PersistenceTests : IDisposable
         var destination = StreamDestination.Create("YouTube", StreamPlatform.YouTube, "rtmp://a.rtmp.youtube.com/live2");
         project.InsertDestination(destination);
         Assert.Contains("clave", await session.ValidateStreamAsync());
-        await session.SetDestinationKeyAsync(destination.Id, "abc");
+        // Con caracteres fuera del hexadecimal: una clave como "abc" puede aparecer por azar dentro de un GUID del proyecto.
+        const string key = "live_KEY_xyz";
+        await session.SetDestinationKeyAsync(destination.Id, key);
         Assert.Null(await session.ValidateStreamAsync());
 
         await session.StartStreamAsync();
         var target = engine.DestinationTargets[destination.Id];
-        Assert.Equal("abc", target.Key);
-        Assert.DoesNotContain("abc", target.ToString());
-        Assert.DoesNotContain("abc", ProjectSerializer.Serialize(project));
+        Assert.Equal(key, target.Key);
+        Assert.DoesNotContain(key, target.ToString());
+        Assert.DoesNotContain(key, ProjectSerializer.Serialize(project));
     }
 
     [Fact]
