@@ -100,7 +100,8 @@ if ($Stage -in 'All', 'Installer') {
 if ($Stage -in 'All', 'Checksums') {
     if (-not (Test-Path $setup)) { throw "Falta $setup (etapa Installer)." }
     Write-Host '5/5 Sumas de comprobación…'
-    $sums = Get-ChildItem $out -File | Where-Object Extension -in '.exe', '.zip' |
+    # Solo lo que se publica (los símbolos se guardan aparte).
+    $sums = Get-ChildItem $out -File | Where-Object { $_.Extension -in '.exe', '.zip' -and $_.Name -notlike '*-symbols.zip' } |
         ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }
     Set-Content (Join-Path $out 'SHA256SUMS.txt') $sums -Encoding ascii
 

@@ -3,13 +3,20 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versiones con
 [Versionado Semántico](https://semver.org/lang/es/).
 
-## [Sin publicar]
+## [0.8.1] - 2026-10-19
+
+Primera versión compilada y publicada automáticamente por GitHub Actions desde el código del repositorio.
 
 ### Añadido
-- Firma Authenticode de la aplicación y del instalador con SignPath Foundation desde GitHub Actions
-  (`.github/workflows/release.yml`, `docs/FIRMA.md`).
+- Workflow de publicación (`.github/workflows/release.yml`): al subir un tag compila, prueba, empaqueta y publica la
+  release con estas notas.
+- Firma Authenticode de la aplicación y del instalador con SignPath Foundation, que se activa en cuanto se aprueba y
+  configura el proyecto (`docs/FIRMA.md`). Esta versión todavía se publica **sin firmar**.
 - `scripts/package.ps1` por etapas (`-Stage App|Installer|Checksums`) y firma local opcional con
   `-CertificateThumbprint`.
+
+### Cambiado
+- `SHA256SUMS.txt` solo incluye los archivos publicados (no los símbolos).
 
 ## [0.8.0] - 2026-10-19
 
@@ -40,5 +47,6 @@ Primera versión con distribución. Reúne las fases 1 a 7 del plan:
 - Instalador por usuario, paquete portable, actualizaciones firmadas e inventario de licencias.
 - El proyecto pasa a llamarse LiveStream (antes StreamPilot).
 
+[0.8.1]: https://github.com/angelitosystems/LiveStream/releases/tag/v0.8.1
 [0.8.0]: https://github.com/angelitosystems/LiveStream/releases/tag/v0.8.0
 [0.7.0]: https://github.com/angelitosystems/LiveStream/releases/tag/v0.7.0

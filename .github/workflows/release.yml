@@ -1,5 +1,6 @@
 # Compila, firma (SignPath) y publica LiveStream.
-#   - Al subir un tag v*: genera la distribución firmada y la adjunta a la release de ese tag (borrador si no existe).
+#   - Al subir un tag v*: genera la distribución (firmada si SignPath está configurado) y publica la release del tag
+#     con las notas de CHANGELOG.md (si la release ya existe, reemplaza sus archivos).
 #   - Manual (workflow_dispatch): solo compila y deja los archivos como artefactos del workflow, para probar.
 # La firma Authenticode se activa cuando existe la variable SIGNPATH_ORGANIZATION_ID y el secreto SIGNPATH_API_TOKEN
 # (ver docs/FIRMA.md). Sin ellos, el workflow funciona igual pero los .exe salen sin firmar.
@@ -127,11 +128,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
+          $version = $tag.TrimStart('v')
           $files = Get-ChildItem artifacts/release -File | Where-Object Name -notlike '*-symbols.zip' | ForEach-Object FullName
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $existing = gh release list --limit 100 --json tagName --jq '.[].tagName'
+          if ($existing -contains $tag) {
             gh release upload $tag $files --clobber
           } else {
-            gh release create $tag $files --draft --verify-tag --title "LiveStream $($tag.TrimStart('v'))" --notes "Ver CHANGELOG.md."
+            ./scripts/release-notes.ps1 -Version $version -Output "$env:RUNNER_TEMP/notes.md" -Signed:($env:SIGN -eq 'true') -Repository $env:GITHUB_REPOSITORY
+            gh release create $tag $files --verify-tag --latest --title "LiveStream $version" --notes-file "$env:RUNNER_TEMP/notes.md"
           }
           if ($LASTEXITCODE) { throw 'No se pudo publicar la release.' }

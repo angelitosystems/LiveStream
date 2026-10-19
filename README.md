@@ -11,13 +11,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/angelitosystems/LiveStream/releases"><img alt="Versión" src="https://img.shields.io/badge/versión-0.8.0-3d8bff" /></a>
+  <a href="https://github.com/angelitosystems/LiveStream/releases"><img alt="Versión" src="https://img.shields.io/badge/versión-0.8.1-3d8bff" /></a>
   <a href="LICENSE"><img alt="Licencia" src="https://img.shields.io/badge/licencia-GPL--2.0--or--later-b13cff" /></a>
   <img alt="Plataforma" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-22d3ff" />
   <a href="https://github.com/sponsors/angelitosystems"><img alt="Auspicia" src="https://img.shields.io/badge/♥-auspicia-ff2d8a" /></a>
 </p>
 
-> Estado: versión **0.8.0**. Las siete fases del plan están implementadas y verificadas contra libobs real en
+> Estado: versión **0.8.1**. Las siete fases del plan están implementadas y verificadas contra libobs real en
 > Windows 11. Lo que no se ha podido probar (por ejemplo, emitir a plataformas reales sin credenciales) está detallado
 > en [docs/ESTADO.md](docs/ESTADO.md). Los cambios de cada versión están en [CHANGELOG.md](CHANGELOG.md).
 
@@ -42,12 +42,12 @@
 
 ## Instalar
 
-Descarga `LiveStream-Setup-0.8.0.exe` de la sección [Releases](https://github.com/angelitosystems/LiveStream/releases)
+Descarga `LiveStream-Setup-0.8.1.exe` de la sección [Releases](https://github.com/angelitosystems/LiveStream/releases)
 y ejecútalo. Un asistente te guía en cuatro pasos (bienvenida, opciones, instalación y listo): eliges la carpeta y si
 quieres acceso en el menú Inicio y en el escritorio. Instala solo para tu usuario (no pide administrador) en
 `%LOCALAPPDATA%\Programs\LiveStream` y se desinstala desde «Aplicaciones instaladas». También hay un `.zip` portable.
 
-Instalación desatendida: `LiveStream-Setup-0.8.0.exe /quiet [/dir <carpeta>] [/noshortcuts]` (detalles en
+Instalación desatendida: `LiveStream-Setup-0.8.1.exe /quiet [/dir <carpeta>] [/noshortcuts]` (detalles en
 [docs/DISTRIBUCION.md](docs/DISTRIBUCION.md)).
 
 Requisitos: Windows 10/11 x64 y una GPU con Direct3D 11. El instalador no está firmado con Authenticode, así que

@@ -9,7 +9,7 @@
     <RuntimeIdentifier Condition="'$(OutputType)' == 'WinExe'">win-x64</RuntimeIdentifier>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- Versión del producto: la usan el instalador, «Aplicaciones instaladas» y las actualizaciones. -->
-    <Version>0.8.0</Version>
+    <Version>0.8.1</Version>
     <Product>LiveStream</Product>
     <Company>LiveStream</Company>
     <Copyright>© 2026 Angel Calderon Mantilla. GPL-2.0-or-later.</Copyright>
