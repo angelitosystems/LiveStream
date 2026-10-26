@@ -99,7 +99,10 @@ public sealed class GraphicDesignerDialog
 
         _layers = new ListBox { Classes = { "studioList" }, SelectionMode = SelectionMode.Multiple };
         _layers.SelectionChanged += OnLayerSelected;
-        _layers.ItemTemplate = new FuncDataTemplate<DesignElement>((element, _) => LayerRow(element), false);
+        // Avalonia puede reconstruir la plantilla con un elemento null al reciclar contenedores
+        // (p. ej. al refrescar ItemsSource): devolvemos una fila vacía en vez de fallar.
+        _layers.ItemTemplate = new FuncDataTemplate<DesignElement>((element, _) =>
+            element is null ? new Panel { MinHeight = 28 } : LayerRow(element), false);
 
         _properties = new StackPanel { Spacing = 10 };
         _error = new TextBlock { Foreground = Brushes.IndianRed, TextWrapping = TextWrapping.Wrap };
@@ -532,6 +535,8 @@ public sealed class GraphicDesignerDialog
 
     private Control LayerRow(DesignElement element)
     {
+        if (element is null)
+            return new Panel { MinHeight = 28 };
         var glyph = new Panel
         {
             Width = 18,
