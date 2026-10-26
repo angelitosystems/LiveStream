@@ -46,7 +46,8 @@ Si falta alguna variable obligatoria o no es válida, el contenedor **no arranca
 ## Desplegar en Coolify
 
 Requisitos: un servidor con Coolify, un dominio que apunte al VPS y acceso al repositorio de GitHub. Ningún valor de
-este documento es real: sustituye los marcadores.
+este documento es real: sustituye los marcadores. El backend vive en el repositorio
+`angelitosystems/LiveStream-Marketplace` (ya no en este repo).
 
 1. **Claves**, en tu equipo y una sola vez:
    ```powershell
@@ -56,11 +57,11 @@ este documento es real: sustituye los marcadores.
    ```
    Haz una copia de seguridad de `private.pem` fuera del VPS y del repositorio. Si se pierde, habrá que publicar una
    versión de LiveStream con una clave nueva.
-2. **Coolify → Projects → New → Resource → Public/Private Repository**: elige `angelitosystems/LiveStream`, la rama y
-   **Build Pack: Docker Compose**.
+2. **Coolify → Projects → New → Resource → Public/Private Repository**: elige `angelitosystems/LiveStream-Marketplace`,
+   la rama y **Build Pack: Docker Compose**.
    - *Base Directory*: `/`
-   - *Docker Compose Location*: `/marketplace/docker-compose.yml`
-3. **Environment Variables**: `ADMIN_TOKEN`, `PUBLISHER_PUBLIC_KEY` y `PUBLIC_BASE_URL`, como en `marketplace/.env.example`.
+   - *Docker Compose Location*: `/docker-compose.yml`
+3. **Environment Variables**: `ADMIN_TOKEN`, `PUBLISHER_PUBLIC_KEY` y `PUBLIC_BASE_URL`, como en `.env.example` del repo.
    Marca `ADMIN_TOKEN` como secreto.
 4. **Domains**: asigna `https://<tu-subdominio>` al servicio `marketplace`, puerto **8080**. Coolify (Traefik o Caddy)
    emite y renueva el certificado HTTPS. El contenedor solo escucha en HTTP interno.
@@ -98,6 +99,6 @@ rechazados y accesos de administración denegados (con IP). Los logs de cada pet
 
 ## Prueba local completa
 
-`marketplace/smoke-test.ps1` arranca el backend en `127.0.0.1` con claves temporales y comprueba publicar, rechazar
-duplicados, firmas ajenas y tokens incorrectos, descargar con el SHA-256 correcto, retirar (410), restaurar y hacer
-una copia de seguridad. No toca producción.
+El `smoke-test.ps1` del repositorio `angelitosystems/LiveStream-Marketplace` arranca el backend en `127.0.0.1` con
+claves temporales y comprueba publicar, rechazar duplicados, firmas ajenas y tokens incorrectos, descargar con el
+SHA-256 correcto, retirar (410), restaurar y hacer una copia de seguridad. No toca producción.
