@@ -96,6 +96,11 @@ public sealed class CanvasEditorController : IDisposable
             if (CanvasGeometry.HitTest(Items(), ToCanvas(p)) is { } item)
                 ItemDoubleClicked?.Invoke(item.Id);
         };
+        host.FilesDropped += async (paths, x, y) =>
+        {
+            var canvas = ToCanvas(new CanvasPointer(x, y, CanvasButton.Left, CanvasModifiers.None));
+            await new CanvasDropController(_vm).ImportFilesAsync(paths, canvas.X, canvas.Y);
+        };
     }
 
     // ---- Vista ----------------------------------------------------------------------------------

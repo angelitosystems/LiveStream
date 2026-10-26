@@ -2,6 +2,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using LiveStream.Application.Audio;
 using LiveStream.Domain.Entities;
 
+using Avalonia;
+using Avalonia.Media;
+using Avalonia.Styling;
+
 namespace LiveStream.Desktop.ViewModels;
 
 public sealed partial class SceneRowViewModel(Guid id, string name) : ObservableObject
@@ -73,27 +77,54 @@ public sealed partial class MixerChannelViewModel(Guid sourceId) : ObservableObj
     public static double ToMultiplier(double db) => db <= MinDb ? 0 : SetVolumeCommand.DbToMultiplier(db);
 }
 
-/// <summary>Catálogo de tipos de fuente que se pueden añadir desde la UI, con su descripción.</summary>
+/// <summary>Catálogo de tipos de fuente que se pueden añadir desde la UI, con su descripción y categoría.</summary>
 public static class SourceCatalog
 {
-    public sealed record Entry(SourceKind Kind, string Label, string Description, string DefaultName);
+    public sealed record Entry(SourceKind Kind, string Category, string Label, string Description, string DefaultName);
 
     public static readonly IReadOnlyList<Entry> Entries =
     [
-        new(SourceKind.DisplayCapture, "Captura de pantalla", "Un monitor completo.", "Pantalla"),
-        new(SourceKind.WindowCapture, "Captura de ventana", "Una ventana concreta de una aplicación.", "Ventana"),
-        new(SourceKind.GameCapture, "Captura de juego", "Juegos DirectX/OpenGL/Vulkan a pantalla completa con el mínimo impacto.", "Juego"),
-        new(SourceKind.VideoCaptureDevice, "Dispositivo de video", "Webcam o capturadora HDMI.", "Cámara"),
-        new(SourceKind.AudioInput, "Entrada de audio", "Micrófono o interfaz de audio.", "Micrófono"),
-        new(SourceKind.AudioOutput, "Audio de salida", "Lo que suena en el equipo (escritorio, juego, llamadas).", "Audio del escritorio"),
-        new(SourceKind.Image, "Imagen", "PNG, JPG, GIF animado... Útil para logos y marcas de agua.", "Imagen"),
-        new(SourceKind.ImageSlideshow, "Presentación de imágenes", "Varias imágenes en secuencia.", "Presentación"),
-        new(SourceKind.Media, "Video o audio", "Archivo multimedia local o URL de red.", "Multimedia"),
-        new(SourceKind.Text, "Texto", "Texto con fuente, color, borde y fondo.", "Texto"),
-        new(SourceKind.ColorSource, "Color sólido", "Rectángulo de color: fondos, bandas y formas simples.", "Color"),
+        // Captura
+        new(SourceKind.DisplayCapture, "Captura", "Captura de pantalla", "Un monitor completo.", "Pantalla"),
+        new(SourceKind.WindowCapture, "Captura", "Captura de ventana", "Una ventana concreta de una aplicación.", "Ventana"),
+        new(SourceKind.GameCapture, "Captura", "Captura de juego", "Juegos DirectX/OpenGL/Vulkan a pantalla completa con el mínimo impacto.", "Juego"),
+        new(SourceKind.VideoCaptureDevice, "Captura", "Dispositivo de video", "Webcam o capturadora HDMI.", "Cámara"),
+        // Audio
+        new(SourceKind.AudioInput, "Audio", "Entrada de audio", "Micrófono o interfaz de audio.", "Micrófono"),
+        new(SourceKind.AudioOutput, "Audio", "Audio de salida", "Lo que suena en el equipo (escritorio, juego, llamadas).", "Audio del escritorio"),
+        // Contenido visual
+        new(SourceKind.Image, "Contenido visual", "Imagen", "PNG, JPG, GIF animado... Útil para logos y marcas de agua.", "Imagen"),
+        new(SourceKind.ImageSlideshow, "Contenido visual", "Presentación de imágenes", "Varias imágenes en secuencia.", "Presentación"),
+        new(SourceKind.Media, "Contenido visual", "Video o audio", "Archivo multimedia local o URL de red.", "Multimedia"),
+        new(SourceKind.Text, "Contenido visual", "Texto", "Texto con fuente, color, borde y fondo.", "Texto"),
+        new(SourceKind.ColorSource, "Contenido visual", "Color sólido", "Rectángulo de color: fondos, bandas y formas simples.", "Color"),
     ];
 
     public static string Label(SourceKind kind) => Entries.FirstOrDefault(e => e.Kind == kind)?.Label ?? kind.ToString();
+
+    public static string Category(SourceKind kind) => Entries.FirstOrDefault(e => e.Kind == kind)?.Category ?? "Otras";
+
+    /// <summary>Clave de recurso del icono 24x24 de la familia propia para cada tipo de fuente.</summary>
+    public static string IconKey(SourceKind kind) => kind switch
+    {
+        SourceKind.DisplayCapture => "Icon.Display",
+        SourceKind.WindowCapture => "Icon.Window",
+        SourceKind.GameCapture => "Icon.Gamepad",
+        SourceKind.VideoCaptureDevice => "Icon.Camera",
+        SourceKind.AudioInput => "Icon.Mic",
+        SourceKind.AudioOutput => "Icon.Speaker",
+        SourceKind.Image => "Icon.Image",
+        SourceKind.ImageSlideshow => "Icon.Slideshow",
+        SourceKind.Media => "Icon.Film",
+        SourceKind.Text => "Icon.Text",
+        SourceKind.ColorSource => "Icon.Palette",
+        _ => "Icon.Layers",
+    };
+
+    /// <summary>Geometría del icono (null si el recurso no está cargado: se oculta el icono, no explota).</summary>
+    public static StreamGeometry? Geometry(SourceKind kind) =>
+        Avalonia.Application.Current?.TryGetResource(IconKey(kind), ThemeVariant.Default, out var value) == true && value is StreamGeometry g
+            ? g : null;
 }
 
 /// <summary>Gráfico de la capa superpuesta tal como lo muestra el panel de gráficos (arriba = capa superior).</summary>

@@ -100,6 +100,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
 
     public ObservableCollection<SceneRowViewModel> Scenes { get; } = [];
     public ObservableCollection<SourceRowViewModel> Sources { get; } = [];
+    /// <summary>Filas visibles tras el filtro de búsqueda (las mismas instancias: la selección sigue valiendo).</summary>
+    public ObservableCollection<SceneRowViewModel> VisibleScenes { get; } = [];
+    public ObservableCollection<SourceRowViewModel> VisibleSources { get; } = [];
+    [ObservableProperty] private string _sceneFilter = "";
+    [ObservableProperty] private string _sourceFilter = "";
+
+    partial void OnSceneFilterChanged(string value) => ApplyFilters();
+
+    partial void OnSourceFilterChanged(string value) => ApplyFilters();
+
+    private void ApplyFilters()
+    {
+        Sync(VisibleScenes, Filter(Scenes, SceneFilter).Select(r => r.Id).ToList(), id => Scenes.First(r => r.Id == id), r => r.Id);
+        Sync(VisibleSources, Filter(Sources, SourceFilter).Select(r => r.ItemId).ToList(), id => Sources.First(r => r.ItemId == id), r => r.ItemId);
+    }
+
+    private static IEnumerable<T> Filter<T>(IEnumerable<T> rows, string text) =>
+        string.IsNullOrWhiteSpace(text)
+            ? rows
+            : rows.Where(r => r?.ToString()?.Contains(text, StringComparison.OrdinalIgnoreCase) == true);
+
     public ObservableCollection<MixerChannelViewModel> Mixer { get; } = [];
     public IReadOnlyList<KeyValuePair<string, string>> Transitions { get; } = SetTransitionCommand.Available.ToList();
     public ObservableCollection<GraphicRowViewModel> Graphics { get; } = [];
@@ -254,6 +275,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
             OnPropertyChanged(nameof(RedoText));
             if (previousEdit != EditSceneId)
                 EditSceneChanged?.Invoke(this, EventArgs.Empty);
+            ApplyFilters();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
         finally
@@ -339,6 +361,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Selección desde el panel de fuentes (multi-selección: varias filas del ListBox).</summary>
+    public void SelectRows(IReadOnlyList<SourceRowViewModel> rows)
+    {
+        SelectedItems.Clear();
+        foreach (var row in rows)
+            SelectedItems.Add(row.ItemId);
+        _refreshing = true;
+        SelectedSource = rows.Count > 0 ? rows[^1] : null;
+        _refreshing = false;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     // ---- Ejecución de comandos ------------------------------------------------------------------
 
     public async Task<CommandResult> Run(IStudioCommand command)
@@ -354,43 +388,59 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
 
     // ---- Escenas --------------------------------------------------------------------------------
 
+    private SceneRowViewModel? Resolve(SceneRowViewModel? row) => row ?? SelectedScene;
+
+    /// <summary>Se pidió la creación de escenas (MainWindow abre el diálogo con plantillas).</summary>
+    public event EventHandler? CreateSceneRequested;
+
     [RelayCommand]
-    private async Task AddScene()
+    private void AddScene() => CreateSceneRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Crea una escena con nombre y plantilla (vía el diálogo nuevo o el asistente).</summary>
+    public async Task<Guid?> AddSceneWithTemplateAsync(string name, SceneTemplateKind kind)
     {
-        var name = await Dialogs.PromptAsync("Nueva escena", "Nombre de la escena:", Project.NextSceneName("Escena"));
-        if (name is null)
-            return;
-        var command = new CreateSceneCommand(name);
-        if ((await Run(command)).Success && Project.StudioMode && command.CreatedSceneId is { } id)
+        var (sceneId, error) = await SceneTemplates.CreateAsync(Executor.Context, Executor, name, kind);
+        if (error is not null)
+        {
+            StatusMessage = error;
+            return null;
+        }
+        var id = sceneId!.Value;
+        if (Project.StudioMode)
             await Run(new SetPreviewSceneCommand(id));
+        return id;
     }
 
     [RelayCommand]
-    private async Task RemoveScene()
+    private async Task RemoveScene(SceneRowViewModel? row)
     {
-        if (SelectedScene is not { } scene)
+        if (Resolve(row) is not { } scene)
             return;
         if (await Dialogs.ConfirmAsync("Eliminar escena", $"¿Eliminar la escena «{scene.Name}»? Puedes deshacerlo con Ctrl+Z.", "Eliminar", destructive: true))
             await Run(new RemoveSceneCommand(scene.Id));
     }
 
     [RelayCommand]
-    private async Task RenameScene()
+    private async Task RenameScene(SceneRowViewModel? row)
     {
-        if (SelectedScene is not { } scene)
+        if (Resolve(row) is not { } scene)
             return;
         if (await Dialogs.PromptAsync("Renombrar escena", "Nuevo nombre:", scene.Name) is { } name)
             await Run(new RenameSceneCommand(scene.Id, name));
     }
 
     [RelayCommand]
-    private Task DuplicateScene() => SelectedScene is { } s ? Run(new DuplicateSceneCommand(s.Id)) : Task.CompletedTask;
+    private Task DuplicateScene(SceneRowViewModel? row) => Resolve(row) is { } s ? Run(new DuplicateSceneCommand(s.Id)) : Task.CompletedTask;
+
+    /// <summary>Saltar a una escena concreta (menú contextual de una fila que no está seleccionada).</summary>
+    public Task SwitchToScene(SceneRowViewModel row) =>
+        Project.StudioMode ? Run(new SetPreviewSceneCommand(row.Id)) : Run(new ActivateSceneCommand(row.Id));
 
     [RelayCommand]
-    private Task MoveSceneUp() => SelectedScene is { } s ? Run(new MoveSceneCommand(s.Id, Project.IndexOfScene(s.Id) - 1)) : Task.CompletedTask;
+    private Task MoveSceneUp(SceneRowViewModel? row) => Resolve(row) is { } s ? Run(new MoveSceneCommand(s.Id, Project.IndexOfScene(s.Id) - 1)) : Task.CompletedTask;
 
     [RelayCommand]
-    private Task MoveSceneDown() => SelectedScene is { } s ? Run(new MoveSceneCommand(s.Id, Project.IndexOfScene(s.Id) + 1)) : Task.CompletedTask;
+    private Task MoveSceneDown(SceneRowViewModel? row) => Resolve(row) is { } s ? Run(new MoveSceneCommand(s.Id, Project.IndexOfScene(s.Id) + 1)) : Task.CompletedTask;
 
     /// <summary>Atajo Ctrl+1..9: cambia a la escena N (en modo estudio, a la vista previa).</summary>
     public Task SwitchToSceneIndex(int index)
@@ -423,6 +473,29 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
             return;
         if (await Dialogs.PromptAsync("Renombrar fuente", "Nuevo nombre:", row.Name) is { } name)
             await Run(new RenameSourceCommand(row.SourceId, name));
+    }
+
+    /// <summary>Duplica los elementos seleccionados en su escena: comparten fuente y quedan 24 px abajo a la derecha.</summary>
+    [RelayCommand]
+    private async Task DuplicateSource()
+    {
+        var targets = SelectedItems.ToList();
+        if (targets.Count == 0)
+            return;
+        Guid? last = null;
+        foreach (var item in targets)
+        {
+            var (scene, sceneItem) = Project.FindItem(item);
+            var add = new AddExistingSourceCommand(scene.Id, sceneItem.SourceId);
+            var result = await Run(add);
+            if (!result.Success || add.ItemId is not { } newItem)
+                continue;
+            var transform = sceneItem.Transform.WithPosition(sceneItem.Transform.X + 24, sceneItem.Transform.Y + 24);
+            await Run(new SetItemTransformCommand(newItem, transform));
+            last = newItem;
+        }
+        if (last is { } created)
+            SelectFromCanvas(created, false);
     }
 
     [RelayCommand]

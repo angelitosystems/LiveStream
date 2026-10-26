@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
@@ -15,13 +16,18 @@ public sealed partial class MainWindow : Window
     private readonly GridLength[] _defaultDockColumns;
     private readonly GridLength _defaultDockHeight;
     private CanvasEditorController? _editor;
+    private bool _syncingSourceSelection;
 
     public MainWindow()
     {
         InitializeComponent();
         _defaultDockColumns = Docks.ColumnDefinitions.Select(c => c.Width).ToArray();
         _defaultDockHeight = Workspace.RowDefinitions[3].Height;
-        Opened += async (_, _) => await Vm.StartAsync();
+        Opened += async (_, _) =>
+        {
+            await Vm.StartAsync();
+            RestorePanelLayout();
+        };
     }
 
     private MainViewModel Vm => (MainViewModel)DataContext!;
@@ -38,6 +44,8 @@ public sealed partial class MainWindow : Window
             var (_, sceneItem) = vm.Project.FindItem(item);
             await StudioDialogs.ShowPropertiesAsync(vm, sceneItem.SourceId);
         };
+        vm.CreateSceneRequested += async (_, _) => await Guard("Nueva escena", () => StudioDialogs.ShowCreateSceneAsync(Vm));
+        AttachSourceListInteractions();
         new ProgramDisplayController(vm).Attach(Program);
         vm.StudioModeChanged += (_, _) => ApplyStudioLayout(vm.StudioMode);
         vm.Assistant.MessageAdded += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => ChatScroll.ScrollToEnd(),
@@ -58,6 +66,81 @@ public sealed partial class MainWindow : Window
         CanvasGrid.ColumnDefinitions[2].Width = studio ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         _editor?.FitView();
     }
+
+    // ---- Panel de Fuentes: multi-selección y arrastre de archivos --------------------------------
+
+    private void AttachSourceListInteractions()
+    {
+        SourceList.SelectionChanged += OnSourceSelectionChanged;
+        SourceList.AddHandler(Avalonia.Input.Gestures.RightTappedEvent, OnSourceRightTapped);
+        SceneList.AddHandler(Avalonia.Input.Gestures.RightTappedEvent, OnSceneRightTapped);
+        DragDrop.SetAllowDrop(SourceList, true);
+        SourceList.AddHandler(DragDrop.DragOverEvent, (sender, e) =>
+        {
+            e.DragEffects = e.DataTransfer.TryGetFiles() is { } files && files.Any()
+                ? DragDropEffects.Copy
+                : DragDropEffects.None;
+            e.Handled = true;
+        });
+        SourceList.AddHandler(DragDrop.DropEvent, async (sender, e) =>
+        {
+            var files = e.DataTransfer.TryGetFiles()?.ToList();
+            if (files is not { Count: > 0 })
+                return;
+            var paths = files.Select(f => f.Path.LocalPath).Where(p => p.Length > 0).ToArray();
+            if (paths.Length == 0)
+                return;
+            await Guard("Importar archivo", () => new CanvasDropController(Vm).ImportFilesAsync(paths, double.NaN, double.NaN));
+        });
+    }
+
+    private void OnSourceSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingSourceSelection || sender is not ListBox list)
+            return;
+        var rows = new List<SourceRowViewModel>();
+        if (list.SelectedItems is not { } items)
+            return;
+        foreach (var item in items)
+            if (item is SourceRowViewModel vmRow)
+                rows.Add(vmRow);
+        if (Vm.SelectedItems.SetEquals(rows.Select(r => r.ItemId)))
+            return;
+        _syncingSourceSelection = true;
+        Vm.SelectRows(rows);
+        _syncingSourceSelection = false;
+    }
+
+    // Selección al hacer clic derecho sobre una fila sin estar seleccionada.
+
+    private void OnSceneRightTapped(object? sender, RoutedEventArgs e)
+    {
+        if (sender is ListBox list && e.Source is Visual v &&
+            v.FindAncestorOfType<ListBoxItem>(true)?.DataContext is SceneRowViewModel row)
+            list.SelectedItem = row;
+    }
+
+    private void OnSourceRightTapped(object? sender, RoutedEventArgs e)
+    {
+        if (sender is ListBox list && e.Source is Visual v &&
+            v.FindAncestorOfType<ListBoxItem>(true)?.DataContext is SourceRowViewModel row)
+            list.SelectedItem = row;
+    }
+
+    private async void OnGoToScene(object? sender, RoutedEventArgs e)
+    {
+        if (Vm.SelectedScene is { } row)
+            await Guard("Cambiar de escena", () => Vm.SwitchToScene(row));
+    }
+
+    private async void OnSceneTransitionRow(object? sender, RoutedEventArgs e)
+    {
+        if (Vm.SelectedScene is { } row)
+            await Guard("Transición de la escena", () => ProductionDialogs.ShowTransitionSettingsAsync(Vm, row.Id));
+    }
+
+    private async void OnDuplicateSource(object? sender, RoutedEventArgs e) =>
+        await Vm.DuplicateSourceCommand.ExecuteAsync(null);
 
     protected override async void OnKeyDown(KeyEventArgs e)
     {
@@ -84,6 +167,16 @@ public sealed partial class MainWindow : Window
             case >= Key.D1 and <= Key.D9 when ctrl: await Vm.SwitchToSceneIndex(e.Key - Key.D1); break;
             case Key.Delete: await Vm.RemoveSourceCommand.ExecuteAsync(null); break;
             case Key.F2: await Vm.RenameSourceCommand.ExecuteAsync(null); break;
+            case Key.D when ctrl:
+                // Duplicar selección: fuente si hay alguna, si no la escena activa.
+                if (Vm.SelectedItems.Count > 0)
+                    await Vm.DuplicateSourceCommand.ExecuteAsync(null);
+                else if (Vm.SelectedScene is not null)
+                    await Vm.DuplicateSceneCommand.ExecuteAsync(null);
+                break;
+            case Key.L when ctrl && Vm.SelectedSource is not null: await Vm.ToggleLockedCommand.ExecuteAsync(Vm.SelectedSource); break;
+            case Key.H when ctrl && Vm.SelectedSource is not null: await Vm.ToggleVisibleCommand.ExecuteAsync(Vm.SelectedSource); break;
+            case Key.G when ctrl: await Vm.CenterSelectionCommand.ExecuteAsync(null); break;
             case Key.Left: await Vm.Nudge(-step, 0); break;
             case Key.Right: await Vm.Nudge(step, 0); break;
             case Key.Up: await Vm.Nudge(0, -step); break;
@@ -300,6 +393,34 @@ public sealed partial class MainWindow : Window
         Workspace.RowDefinitions[3].Height = _defaultDockHeight;
     }
 
+    // ---- Distribución de paneles (ajustes del equipo) ---------------------------------------------
+
+    /// <summary>Restaura el reparto de columnas del dock y la altura de la fila de paneles.</summary>
+    private void RestorePanelLayout()
+    {
+        var layout = Vm.Machine.Load();
+        if (layout.DockColumnWidths is { Length: > 0 } columns)
+        {
+            var widths = columns.Split(',').Select(s => s.Trim()).ToList();
+            if (widths.Count == Docks.ColumnDefinitions.Count)
+                for (var i = 0; i < widths.Count; i++)
+                    if (GridLength.Parse(widths[i]) is { } width)
+                        Docks.ColumnDefinitions[i].Width = width;
+        }
+        if (layout.DockRowHeight is { Length: > 0 } height && GridLength.Parse(height) is { } rowHeight)
+            Workspace.RowDefinitions[3].Height = rowHeight;
+    }
+
+    private void SavePanelLayout()
+    {
+        var columns = string.Join(',', Docks.ColumnDefinitions.Select(c => c.Width.ToString()));
+        var height = Workspace.RowDefinitions[3].Height.ToString();
+        var settings = Vm.Machine.Load();
+        if (columns == settings.DockColumnWidths && height == settings.DockRowHeight)
+            return;
+        Vm.Machine.Save(settings with { DockColumnWidths = columns, DockRowHeight = height });
+    }
+
     private void OnOpenRecordings(object? sender, RoutedEventArgs e)
     {
         var folder = Path.GetDirectoryName(Vm.Session.NextRecordingPath(DateTime.Now))!;
@@ -320,12 +441,14 @@ public sealed partial class MainWindow : Window
         "Ctrl+Z / Ctrl+Y: deshacer / rehacer\n" +
         "Ctrl+S: guardar · Ctrl+O: abrir proyecto\n" +
         "Ctrl+1…9: cambiar a la escena N\n" +
-        "Supr: eliminar · F2: renombrar fuente\n" +
+        "Ctrl+D: duplicar (fuente o escena) · Supr: eliminar · F2: renombrar fuente\n" +
+        "Ctrl+L: bloquear o desbloquear · Ctrl+H: mostrar u ocultar · Ctrl+G: centrar\n" +
         "Flechas: mover 1 px (Shift: 10 px)\n" +
         "Ctrl+E: editar transformación · Ctrl+F: ajustar a pantalla · Ctrl+R: restablecer\n" +
         "Ctrl+0: ajustar lienzo · Ctrl++ / Ctrl+-: zoom\n\n" +
         "En el lienzo: arrastra para mover; los tiradores escalan (Shift deforma, Alt recorta); " +
-        "Ctrl+clic añade a la selección; rueda para zoom; botón central para desplazar.");
+        "Ctrl+clic añade a la selección; rueda para zoom; botón central para desplazar. " +
+        "Arrastra imágenes, videos o audio desde el Explorador sobre el lienzo o el panel Fuentes.");
 
     private async void OnAbout(object? sender, RoutedEventArgs e) => await Vm.Dialogs.InfoAsync("Acerca de LiveStream",
         "LiveStream AI — estudio de producción y transmisión en vivo.\n\n" +
@@ -337,6 +460,14 @@ public sealed partial class MainWindow : Window
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
+        try
+        {
+            SavePanelLayout();
+        }
+        catch
+        {
+            // La distribución de paneles no puede impedir el cierre.
+        }
         if (DataContext is MainViewModel { IsStreaming: true } || DataContext is MainViewModel { IsRecording: true })
         {
             e.Cancel = true;

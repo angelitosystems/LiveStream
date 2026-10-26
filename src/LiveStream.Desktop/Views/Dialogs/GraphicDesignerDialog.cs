@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
@@ -6,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using LiveStream.Application.Commands;
 using LiveStream.Application.Graphics;
@@ -525,14 +527,19 @@ public sealed class GraphicDesignerDialog
 
     // ---- Capas ----------------------------------------------------------------------------------
 
+    private static StreamGeometry? Geometry(string key) =>
+        Avalonia.Application.Current?.TryGetResource(key, ThemeVariant.Default, out var value) == true && value is StreamGeometry g ? g : null;
+
     private Control LayerRow(DesignElement element)
     {
-        var glyph = new TextBlock
+        var glyph = new Panel
         {
-            Text = element.Kind switch { DesignElementKind.Rect => "▭", DesignElementKind.Text => "T", DesignElementKind.Image => "▣", _ => "▷" },
             Width = 18,
             VerticalAlignment = VerticalAlignment.Center,
-            Classes = { "muted" },
+            Children =
+            {
+                new PathIcon { Data = Geometry(element.Kind switch { DesignElementKind.Rect => "Icon.Slideshow", DesignElementKind.Text => "Icon.Text", DesignElementKind.Image => "Icon.Image", _ => "Icon.Film" }), Width = 14, Height = 14, Opacity = 0.75 },
+            },
         };
         var eye = new ToggleButton
         {
@@ -541,9 +548,17 @@ public sealed class GraphicDesignerDialog
             MinWidth = 0,
             Padding = new Thickness(0),
             IsChecked = element.Visible,
-            Content = new TextBlock { Text = element.Visible ? "👁" : "✕", FontSize = 10 },
+            Content = new Panel
+            {
+                Children =
+                {
+                    new PathIcon { Data = Geometry("Icon.Eye"), Width = 14, Height = 14, IsVisible = element.Visible },
+                    new PathIcon { Data = Geometry("Icon.EyeOff"), Width = 14, Height = 14, Opacity = 0.6, IsVisible = !element.Visible },
+                },
+            },
             Opacity = element.Visible ? 1 : 0.6,
         };
+        AutomationProperties.SetName(eye, "Mostrar u ocultar la pieza");
         eye.Click += (_, _) => Edit(_ => DesignOps.Update(Design, [element.Key], e => e with { Visible = !e.Visible }));
         var lockit = new ToggleButton
         {
@@ -552,8 +567,16 @@ public sealed class GraphicDesignerDialog
             MinWidth = 0,
             Padding = new Thickness(0),
             IsChecked = element.Locked,
-            Content = new TextBlock { Text = element.Locked ? "🔒" : "·", FontSize = 10 },
+            Content = new Panel
+            {
+                Children =
+                {
+                    new PathIcon { Data = Geometry("Icon.Lock"), Width = 14, Height = 14, IsVisible = element.Locked },
+                    new PathIcon { Data = Geometry("Icon.Unlock"), Width = 14, Height = 14, Opacity = 0.45, IsVisible = !element.Locked },
+                },
+            },
         };
+        AutomationProperties.SetName(lockit, "Bloquear o desbloquear la pieza");
         lockit.Click += (_, _) => Edit(_ => DesignOps.Update(Design, [element.Key], e => e with { Locked = !e.Locked }));
         var label = element.Binding switch
         {

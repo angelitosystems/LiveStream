@@ -14,7 +14,7 @@
   <StreamGeometry x:Key="Icon.Mute">M3 9h4l5-4v14l-5-4H3zm13.6.2l1.4-1.4l2.2 2.2l2.2-2.2l1.4 1.4l-2.2 2.2l2.2 2.2l-1.4 1.4l-2.2-2.2l-2.2 2.2l-1.4-1.4l2.2-2.2z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Record">M12 5a7 7 0 1 1 0 14a7 7 0 0 1 0-14</StreamGeometry>
   <StreamGeometry x:Key="Icon.Broadcast">M12 10a2 2 0 1 1 0 4a2 2 0 0 1 0-4M7.8 7.8l1.4 1.4a4 4 0 0 0 0 5.6l-1.4 1.4a6 6 0 0 1 0-8.4m8.4 0a6 6 0 0 1 0 8.4l-1.4-1.4a4 4 0 0 0 0-5.6zM5 5l1.4 1.4a8 8 0 0 0 0 11.2L5 19a10 10 0 0 1 0-14m14 0a10 10 0 0 1 0 14l-1.4-1.4a8 8 0 0 0 0-11.2z</StreamGeometry>
-  <StreamGeometry x:Key="Icon.Studio">M3 5h8v14H3zm10 0h8v14h-8zM5 7v10h4V7zm10 0v10h4V7z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Studio">M2 4h9v16H2zm2 2v12h5V6zm9-2h9v16h-9zm2 2v12h5V6zm-6.5 8a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3</StreamGeometry>
   <StreamGeometry x:Key="Icon.Scenes">M4 4h16v4H4zm0 6h16v4H4zm0 6h16v4H4z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Layers">M12 3l9 5l-9 5l-9-5zm-7.2 8.7L12 15.7l7.2-4l1.8 1L12 17.7l-9-5zm0 4L12 19.7l7.2-4l1.8 1L12 21.7l-9-5z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Mixer">M6 3h2v6h2v2H8v10H6V11H4V9h2zm6 0h2v12h2v2h-2v4h-2v-4h-2v-2h2zm6 0h2v4h2v2h-2v12h-2V9h-2V7h2z</StreamGeometry>
@@ -38,5 +38,16 @@
   <StreamGeometry x:Key="Icon.Close">M6.4 5L12 10.6L17.6 5L19 6.4L13.4 12l5.6 5.6l-1.4 1.4l-5.6-5.6L6.4 19L5 17.6l5.6-5.6L5 6.4z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Gauge">M12 4a10 10 0 0 0-8.7 15h17.4A10 10 0 0 0 12 4zm0 2a8 8 0 0 1 7.4 11H4.6A8 8 0 0 1 12 6zm4.2 2.4l-5 5a1.5 1.5 0 1 0 1.4 1.4l5-5z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Warning">M12 2l10.4 18H1.6zm-1 7v5h2V9zm0 7v2h2v-2z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Search">M10 3a7 7 0 0 1 5.9 10.8l5.1 5.1l-1.4 1.4l-5.1-5.1A7 7 0 1 1 10 3m0 2a5 5 0 1 0 0 10a5 5 0 0 0 0-10</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Display">M3 4h18v12H3zm2 2v8h14V6zM10 18h4v2h-4zM8 20h8v2H8z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Window">M3 4h18v16H3zm2 2v3h14V6zm4.5 1.5a1 1 0 1 1 0 2a1 1 0 0 1 0-2m3 0a1 1 0 1 1 0 2a1 1 0 0 1 0-2M5 10h14v8H5z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Gamepad">M6 8h12a4 4 0 0 1 4 4v4a2.5 2.5 0 0 1-4.5 1.5L15.5 15h-7l-2 2.5A2.5 2.5 0 0 1 2 16v-4a4 4 0 0 1 4-4m1 2v2H5v2h2v2h2v-2h2v-2H9v-2zm9 1.5a1.25 1.25 0 1 0 0 2.5a1.25 1.25 0 0 0 0-2.5m2.5-2.5a1.25 1.25 0 1 0 0 2.5a1.25 1.25 0 0 0 0-2.5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Camera">M3 7h11a1 1 0 0 1 1 1v2.4l6-3.4v10l-6-3.4V16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm1 2v6h9V9z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Mic">M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3M6 11h2a4 4 0 0 0 8 0h2a6 6 0 0 1-5 5.9V20h3v2H8v-2h3v-3.1A6 6 0 0 1 6 11</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Image">M3 5h18v14H3zm2 2v10h14V7zm3.5 8a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3m3-1l3-4l3.5 5v2h-14v-2.5l3.5-4z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Slideshow">M7 3h14v14h-2V5H7zM3 7h14v14H3zm2 2v10h10V9z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Film">M3 4h18v16H3zm7 4v8l6-4z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Text">M4 4h16v4h-2V6h-5v12h3v2H8v-2h3V6H6v2H4z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Palette">M12 3a9 9 0 0 0 0 18c1 0 1.7-.8 1.7-1.7c0-.4-.2-.8-.4-1.1c-.2-.3-.4-.6-.4-1c0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.2-4-7.6-9-7.6M6.5 13.5a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3M10 9.5a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3m4.5 0a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3m3.5 3.5a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3</StreamGeometry>
   <StreamGeometry x:Key="Icon.Headphones">M12 3a9 9 0 0 1 9 9v7a2 2 0 0 1-2 2h-3v-8h3v-1a7 7 0 0 0-14 0v1h3v8H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 9-9</StreamGeometry>
 </ResourceDictionary>

@@ -118,33 +118,40 @@
 
     <!-- ===== Barra lateral ===== -->
     <Border DockPanel.Dock="Left" Width="64" Background="{StaticResource Sp.Bg1Brush}" BorderBrush="{StaticResource Sp.LineBrush}" BorderThickness="0,0,1,0">
-      <StackPanel Spacing="4" Margin="0,10">
-        <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Estudio" ToolTip.Tip="Estudio" Background="{StaticResource Sp.Bg3Brush}">
-          <StackPanel Spacing="2">
-            <PathIcon Data="{StaticResource Icon.Studio}" Width="18" Height="18" />
-            <TextBlock Text="Estudio" FontSize="9" HorizontalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <ToggleButton Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" IsChecked="{Binding Assistant.IsOpen}"
-                      AutomationProperties.Name="Asistente de IA" ToolTip.Tip="Asistente de IA (Ctrl+Espacio)">
-          <StackPanel Spacing="2">
-            <PathIcon Data="{StaticResource Icon.Assistant}" Width="18" Height="18" />
-            <TextBlock Text="Asistente" FontSize="9" HorizontalAlignment="Center" />
-          </StackPanel>
-        </ToggleButton>
-        <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Rendimiento y optimización" ToolTip.Tip="Rendimiento y optimización" Click="OnPerformance">
-          <StackPanel Spacing="2">
-            <PathIcon Data="{StaticResource Icon.Gauge}" Width="18" Height="18" />
-            <TextBlock Text="Rendim." FontSize="9" HorizontalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Ajustes de salida y video" ToolTip.Tip="Ajustes de salida y video" Click="OnSettings">
+      <DockPanel Margin="0,10" LastChildFill="False">
+        <StackPanel DockPanel.Dock="Top" Spacing="4">
+          <Image Source="avares://LiveStream.Desktop/Assets/logo-512.png" Width="38" Height="38" Margin="0,2,0,8"
+                 HorizontalAlignment="Center" AutomationProperties.Name="LiveStream" />
+          <Rectangle Height="1" Fill="{StaticResource Sp.LineBrush}" Margin="12,2,12,8" />
+          <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Estudio" ToolTip.Tip="Estudio" Background="{StaticResource Sp.Bg3Brush}">
+            <StackPanel Spacing="2">
+              <PathIcon Data="{StaticResource Icon.Studio}" Width="18" Height="18" />
+              <TextBlock Text="Estudio" FontSize="9" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <ToggleButton Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" IsChecked="{Binding Assistant.IsOpen}"
+                        AutomationProperties.Name="Asistente de IA" ToolTip.Tip="Asistente de IA (Ctrl+Espacio)">
+            <StackPanel Spacing="2">
+              <PathIcon Data="{StaticResource Icon.Assistant}" Width="18" Height="18" />
+              <TextBlock Text="Asistente" FontSize="9" HorizontalAlignment="Center" />
+            </StackPanel>
+          </ToggleButton>
+          <Button Classes="icon" Width="48" Height="48" HorizontalAlignment="Center" AutomationProperties.Name="Rendimiento y optimización" ToolTip.Tip="Rendimiento y optimización" Click="OnPerformance">
+            <StackPanel Spacing="2">
+              <PathIcon Data="{StaticResource Icon.Gauge}" Width="18" Height="18" />
+              <TextBlock Text="Rendim." FontSize="9" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Rectangle Height="1" Fill="{StaticResource Sp.LineBrush}" Margin="12,8,12,4" />
+        </StackPanel>
+        <Button DockPanel.Dock="Bottom" Classes="icon" Width="48" Height="48" HorizontalAlignment="Center"
+                AutomationProperties.Name="Ajustes de salida y video" ToolTip.Tip="Ajustes de salida y video" Click="OnSettings">
           <StackPanel Spacing="2">
             <PathIcon Data="{StaticResource Icon.Gear}" Width="18" Height="18" />
             <TextBlock Text="Ajustes" FontSize="9" HorizontalAlignment="Center" />
           </StackPanel>
         </Button>
-      </StackPanel>
+      </DockPanel>
     </Border>
 
     <!-- ===== Asistente de IA ===== -->
@@ -312,36 +319,52 @@
             <Border DockPanel.Dock="Top" Classes="panelHeader">
               <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                  <Button Classes="icon" Command="{Binding AddSceneCommand}" AutomationProperties.Name="Nueva escena" ToolTip.Tip="Nueva escena"><PathIcon Data="{StaticResource Icon.Plus}" /></Button>
+                  <Button Classes="icon" Command="{Binding AddSceneCommand}" AutomationProperties.Name="Nueva escena con plantilla" ToolTip.Tip="Nueva escena con plantilla"><PathIcon Data="{StaticResource Icon.Plus}" /></Button>
                   <Button Classes="icon" Command="{Binding RemoveSceneCommand}" AutomationProperties.Name="Eliminar escena" ToolTip.Tip="Eliminar escena"><PathIcon Data="{StaticResource Icon.Trash}" /></Button>
                   <Button Classes="icon" Command="{Binding DuplicateSceneCommand}" AutomationProperties.Name="Duplicar escena" ToolTip.Tip="Duplicar escena"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
                   <Button Classes="icon" Command="{Binding RenameSceneCommand}" AutomationProperties.Name="Renombrar (F2)" ToolTip.Tip="Renombrar (F2)"><PathIcon Data="{StaticResource Icon.Pencil}" /></Button>
                   <Button Classes="icon" Command="{Binding MoveSceneUpCommand}" AutomationProperties.Name="Subir" ToolTip.Tip="Subir"><PathIcon Data="{StaticResource Icon.Up}" /></Button>
                   <Button Classes="icon" Command="{Binding MoveSceneDownCommand}" AutomationProperties.Name="Bajar" ToolTip.Tip="Bajar"><PathIcon Data="{StaticResource Icon.Down}" /></Button>
                 </StackPanel>
-                <TextBlock Classes="panelTitle" Text="Escenas" />
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <PathIcon Data="{StaticResource Icon.Scenes}" Width="14" Height="14" Opacity="0.85" />
+                  <TextBlock Classes="panelTitle" Text="Escenas" />
+                </StackPanel>
               </DockPanel>
             </Border>
-            <ListBox Classes="studioList" ItemsSource="{Binding Scenes}" SelectedItem="{Binding SelectedScene}">
-              <ListBox.ContextMenu>
-                <ContextMenu>
-                  <MenuItem Header="Transición de la escena…" Click="OnSceneTransition" />
-                  <MenuItem Header="Renombrar" Command="{Binding RenameSceneCommand}" />
-                  <MenuItem Header="Duplicar" Command="{Binding DuplicateSceneCommand}" />
-                  <MenuItem Header="Eliminar" Command="{Binding RemoveSceneCommand}" />
-                </ContextMenu>
-              </ListBox.ContextMenu>
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:SceneRowViewModel">
-                  <DockPanel>
-                    <Border DockPanel.Dock="Right" Classes="chip live" Padding="6,0" IsVisible="{Binding IsProgram}">
-                      <TextBlock Text="PGM" FontSize="10" FontWeight="SemiBold" />
-                    </Border>
-                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                  </DockPanel>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
+            <Panel>
+              <TextBlock Text="No hay escenas. Crea una con +: vacía o con plantilla (cámara, gameplay, entrevista, overlays…)." Classes="muted" TextWrapping="Wrap" Margin="12" IsVisible="{Binding !VisibleScenes.Count}" />
+              <StackPanel IsVisible="{Binding VisibleScenes.Count}">
+                <TextBox Watermark="Buscar escena…" Text="{Binding SceneFilter, Mode=TwoWay}" Margin="8,8,8,6" AutomationProperties.Name="Buscar escena" />
+                <ListBox Classes="studioList" ItemsSource="{Binding VisibleScenes}" SelectedItem="{Binding SelectedScene}" x:Name="SceneList">
+                  <ListBox.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Cambiar a esta escena" Click="OnGoToScene" />
+                      <MenuItem Header="Transición de la escena…" Click="OnSceneTransitionRow" />
+                      <MenuItem Header="Renombrar" Command="{Binding $parent[ListBox].DataContext.RenameSceneCommand}" CommandParameter="{Binding}" />
+                      <MenuItem Header="Duplicar" Command="{Binding $parent[ListBox].DataContext.DuplicateSceneCommand}" CommandParameter="{Binding}" />
+                      <MenuItem Header="Subir" Command="{Binding $parent[ListBox].DataContext.MoveSceneUpCommand}" CommandParameter="{Binding}" />
+                      <MenuItem Header="Bajar" Command="{Binding $parent[ListBox].DataContext.MoveSceneDownCommand}" CommandParameter="{Binding}" />
+                      <Separator />
+                      <MenuItem Header="Eliminar" Command="{Binding $parent[ListBox].DataContext.RemoveSceneCommand}" CommandParameter="{Binding}" />
+                    </ContextMenu>
+                  </ListBox.ContextMenu>
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SceneRowViewModel">
+                      <DockPanel>
+                        <Border DockPanel.Dock="Right" Classes="chip live" Padding="6,0" IsVisible="{Binding IsProgram}" Margin="2,0,0,0">
+                          <TextBlock Text="PGM" FontSize="10" FontWeight="SemiBold" />
+                        </Border>
+                        <Border DockPanel.Dock="Right" Classes="chip" Padding="6,0" IsVisible="{Binding IsPreview}" Margin="2,0,0,0">
+                          <TextBlock Text="PVW" FontSize="10" FontWeight="SemiBold" />
+                        </Border>
+                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                      </DockPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Panel>
           </DockPanel>
         </Border>
         <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
@@ -351,8 +374,9 @@
           <DockPanel>
             <Border DockPanel.Dock="Top" Classes="panelHeader">
               <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                   <Button Classes="icon" Click="OnAddSource" AutomationProperties.Name="Añadir fuente" ToolTip.Tip="Añadir fuente"><PathIcon Data="{StaticResource Icon.Plus}" /></Button>
+                  <Button Classes="icon" Click="OnDuplicateSource" AutomationProperties.Name="Duplicar (Ctrl+D)" ToolTip.Tip="Duplicar (Ctrl+D)"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
                   <Button Classes="icon" Command="{Binding RemoveSourceCommand}" AutomationProperties.Name="Eliminar (Supr)" ToolTip.Tip="Eliminar (Supr)"><PathIcon Data="{StaticResource Icon.Trash}" /></Button>
                   <Button Classes="icon" Click="OnProperties" AutomationProperties.Name="Propiedades" ToolTip.Tip="Propiedades"><PathIcon Data="{StaticResource Icon.Gear}" /></Button>
                   <Button Classes="icon" Click="OnSourceFilters" AutomationProperties.Name="Filtros" ToolTip.Tip="Filtros (color, croma, máscara…)"><PathIcon Data="{StaticResource Icon.Filter}" /></Button>
@@ -360,40 +384,64 @@
                   <Button Classes="icon" Command="{Binding MoveSourceUpCommand}" AutomationProperties.Name="Subir capa" ToolTip.Tip="Subir capa"><PathIcon Data="{StaticResource Icon.Up}" /></Button>
                   <Button Classes="icon" Command="{Binding MoveSourceDownCommand}" AutomationProperties.Name="Bajar capa" ToolTip.Tip="Bajar capa"><PathIcon Data="{StaticResource Icon.Down}" /></Button>
                 </StackPanel>
-                <TextBlock Classes="panelTitle" Text="Fuentes" />
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <PathIcon Data="{StaticResource Icon.Layers}" Width="14" Height="14" Opacity="0.85" />
+                  <TextBlock Classes="panelTitle" Text="Fuentes" />
+                </StackPanel>
               </DockPanel>
             </Border>
             <Panel>
-              <TextBlock Text="Escena vacía. Pulsa + para añadir una cámara, pantalla, imagen, texto…" Classes="muted" TextWrapping="Wrap"
-                         Margin="12" IsVisible="{Binding !Sources.Count}" />
-              <ListBox x:Name="SourceList" Classes="studioList" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}" DoubleTapped="OnSourceDoubleTapped">
-                <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:SourceRowViewModel">
-                    <DockPanel>
-                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                        <Button Classes="icon" Width="24" Height="24" AutomationProperties.Name="Mostrar u ocultar" ToolTip.Tip="Mostrar u ocultar"
-                                Command="{Binding #Root.((vm:MainViewModel)DataContext).ToggleVisibleCommand}" CommandParameter="{Binding}">
-                          <Panel>
-                            <PathIcon Data="{StaticResource Icon.Eye}" IsVisible="{Binding Visible}" />
-                            <PathIcon Data="{StaticResource Icon.EyeOff}" IsVisible="{Binding !Visible}" Opacity="0.6" />
-                          </Panel>
-                        </Button>
-                        <Button Classes="icon" Width="24" Height="24" AutomationProperties.Name="Bloquear o desbloquear" ToolTip.Tip="Bloquear o desbloquear"
-                                Command="{Binding #Root.((vm:MainViewModel)DataContext).ToggleLockedCommand}" CommandParameter="{Binding}">
-                          <Panel>
-                            <PathIcon Data="{StaticResource Icon.Lock}" IsVisible="{Binding Locked}" />
-                            <PathIcon Data="{StaticResource Icon.Unlock}" IsVisible="{Binding !Locked}" Opacity="0.45" />
-                          </Panel>
-                        </Button>
-                      </StackPanel>
-                      <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding KindLabel}" Classes="muted" FontSize="10" />
-                      </StackPanel>
-                    </DockPanel>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
+              <TextBlock Text="Escena vacía. Pulsa + para añadir una cámara, pantalla, imagen, texto… o arrastra un archivo aquí o al lienzo." Classes="muted" TextWrapping="Wrap"
+                         Margin="12" IsVisible="{Binding !VisibleSources.Count}" />
+              <StackPanel IsVisible="{Binding VisibleSources.Count}">
+                <TextBox Watermark="Buscar fuente…" Text="{Binding SourceFilter, Mode=TwoWay}" Margin="8,8,8,6" AutomationProperties.Name="Buscar fuente" />
+                <ListBox x:Name="SourceList" Classes="studioList" ItemsSource="{Binding VisibleSources}" SelectedItem="{Binding SelectedSource}"
+                         SelectionMode="Multiple" DoubleTapped="OnSourceDoubleTapped">
+                  <ListBox.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Propiedades…" Click="OnProperties" />
+                      <MenuItem Header="Filtros…" Click="OnSourceFilters" />
+                      <MenuItem Header="Transformación…" Click="OnEditTransform" />
+                      <Separator />
+                      <MenuItem Header="Renombrar" Command="{Binding RenameSourceCommand}" />
+                      <MenuItem Header="Duplicar" Command="{Binding DuplicateSourceCommand}" />
+                      <MenuItem Header="Subir capa" Command="{Binding MoveSourceUpCommand}" />
+                      <MenuItem Header="Bajar capa" Command="{Binding MoveSourceDownCommand}" />
+                      <Separator />
+                      <MenuItem Header="Eliminar" Command="{Binding RemoveSourceCommand}" />
+                    </ContextMenu>
+                  </ListBox.ContextMenu>
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SourceRowViewModel">
+                      <DockPanel>
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                          <PathIcon Data="{Binding Kind, Converter={x:Static c:Converters.SourceKindIcon}}" Width="16" Height="16" Opacity="0.9" />
+                          <StackPanel Opacity="{Binding Visible, Converter={x:Static c:Converters.OnOpacity}}">
+                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding KindLabel}" Classes="muted" FontSize="10" />
+                          </StackPanel>
+                        </StackPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                          <Button Classes="icon" Width="24" Height="24" AutomationProperties.Name="Mostrar u ocultar" ToolTip.Tip="Mostrar u ocultar (Ctrl+H)"
+                                  Command="{Binding #Root.((vm:MainViewModel)DataContext).ToggleVisibleCommand}" CommandParameter="{Binding}">
+                            <Panel>
+                              <PathIcon Data="{StaticResource Icon.Eye}" IsVisible="{Binding Visible}" />
+                              <PathIcon Data="{StaticResource Icon.EyeOff}" IsVisible="{Binding !Visible}" Opacity="0.6" />
+                            </Panel>
+                          </Button>
+                          <Button Classes="icon" Width="24" Height="24" AutomationProperties.Name="Bloquear o desbloquear" ToolTip.Tip="Bloquear o desbloquear (Ctrl+L)"
+                                  Command="{Binding #Root.((vm:MainViewModel)DataContext).ToggleLockedCommand}" CommandParameter="{Binding}">
+                            <Panel>
+                              <PathIcon Data="{StaticResource Icon.Lock}" IsVisible="{Binding Locked}" />
+                              <PathIcon Data="{StaticResource Icon.Unlock}" IsVisible="{Binding !Locked}" Opacity="0.45" />
+                            </Panel>
+                          </Button>
+                        </StackPanel>
+                      </DockPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
             </Panel>
           </DockPanel>
         </Border>
@@ -430,7 +478,10 @@
                   <Button Classes="icon" Command="{Binding MoveGraphicUpCommand}" AutomationProperties.Name="Subir capa del gráfico" ToolTip.Tip="Subir capa"><PathIcon Data="{StaticResource Icon.Up}" /></Button>
                   <Button Classes="icon" Command="{Binding MoveGraphicDownCommand}" AutomationProperties.Name="Bajar capa del gráfico" ToolTip.Tip="Bajar capa"><PathIcon Data="{StaticResource Icon.Down}" /></Button>
                 </StackPanel>
-                <TextBlock Classes="panelTitle" Text="Gráficos" />
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <PathIcon Data="{StaticResource Icon.Graphics}" Width="14" Height="14" Opacity="0.85" />
+                  <TextBlock Classes="panelTitle" Text="Gráficos" />
+                </StackPanel>
               </DockPanel>
             </Border>
             <Button DockPanel.Dock="Bottom" Classes="control" Margin="8,4,8,8" Command="{Binding TakeAllGraphicsOutCommand}"
@@ -488,7 +539,10 @@
         <Border Grid.Column="6" Classes="panel">
           <DockPanel>
             <Border DockPanel.Dock="Top" Classes="panelHeader">
-              <TextBlock Classes="panelTitle" Text="Mezclador de audio" />
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <PathIcon Data="{StaticResource Icon.Mixer}" Width="14" Height="14" Opacity="0.85" />
+                <TextBlock Classes="panelTitle" Text="Mezclador de audio" />
+              </StackPanel>
             </Border>
             <ScrollViewer>
               <ItemsControl ItemsSource="{Binding Mixer}" Margin="8,4">
@@ -540,7 +594,10 @@
         <Border Grid.Column="8" Classes="panel">
           <DockPanel>
             <Border DockPanel.Dock="Top" Classes="panelHeader">
-              <TextBlock Classes="panelTitle" Text="Transiciones" />
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <PathIcon Data="{StaticResource Icon.Transition}" Width="14" Height="14" Opacity="0.85" />
+                <TextBlock Classes="panelTitle" Text="Transiciones" />
+              </StackPanel>
             </Border>
             <StackPanel Margin="10" Spacing="8">
               <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Transitions}" SelectedValue="{Binding TransitionId}" SelectedValueBinding="{Binding Key}">
@@ -562,7 +619,10 @@
         <Border Grid.Column="10" Classes="panel">
           <DockPanel>
             <Border DockPanel.Dock="Top" Classes="panelHeader">
-              <TextBlock Classes="panelTitle" Text="Controles" />
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <PathIcon Data="{StaticResource Icon.Broadcast}" Width="14" Height="14" Opacity="0.85" />
+                <TextBlock Classes="panelTitle" Text="Controles" />
+              </StackPanel>
             </Border>
             <StackPanel Margin="10" Spacing="8">
               <Button Classes="control" Classes.live="{Binding IsStreaming}" Classes.primary="{Binding !IsStreaming}"

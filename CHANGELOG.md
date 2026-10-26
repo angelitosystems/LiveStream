@@ -3,6 +3,29 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); versiones con
 [Versionado Semántico](https://semver.org/lang/es/).
 
+## [0.9.1] - 2026-10-26
+
+### Añadido
+- **Escenas con plantillas**: nueva escena con nombre y plantilla preconfigurada (vacía, pantalla completa, gameplay,
+  entrevista con 2 cámaras, presentación, charla con overlays, solo overlays), aplicada como comandos deshacibles.
+- **Gestión de escenas por fila**: renombrar (F2), duplicar (Ctrl+D), subir, bajar y eliminar desde el menú contextual
+  (el clic derecho selecciona la fila) o con comandos por fila.
+- **Panel de fuentes visual**: catálogo por categorías con iconos (Captura, Audio, Contenido visual), búsqueda de
+  escenas y fuentes, selección múltiple y menú contextual completo. Duplicar fuente (Ctrl+L) con desplazamiento de
+  24 px; ocultar/mostrar (Ctrl+H) y bloquear (Ctrl+G) con atajos nuevos que no interceptan escritura en campos.
+- **Arrastrar archivos al lienzo**: soltar imágenes/videos del Explorador sobre el lienzo los importa a la biblioteca,
+  crea el elemento a la escena cerca del punto de soltado (colocación sin solaparse, escalonado de 24 px) y lo deja
+  seleccionado; el audio se añade como fuente de audio de la escena activa. WM_DROPFILES nativo sobre el HWND de la
+  vista previa (la capa de entrada nativa existente, no una simulación de Avalonia).
+- **Barra lateral y paneles refinados**: logo de la marca arriba de la barra lateral con separadores y «Ajustes» al
+  fondo; icono en cada cabecera de los seis paneles del dock (Escenas, Fuentes, Gráficos, Mezclador, Transiciones,
+  Controles) e icono de «Estudio» redibujado.
+- **Persistencia de paneles**: anchuras de columnas y altura de las filas del dock por máquina.
+
+### Limitado (documentado, no simulado)
+- Reordenar capas arrastrando en la lista de fuentes (quedan botones y menú).
+- Arrastrar desde la biblioteca de recursos al lienzo (fuera del Explorador).
+
 ## [0.9.0] - 2026-10-25
 
 ### Añadido

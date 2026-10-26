@@ -18,7 +18,8 @@ internal static partial class Win32
     public const uint CS_DBLCLKS = 0x0008, CS_OWNDC = 0x0020;
     public const uint WM_DESTROY = 0x0002, WM_ERASEBKGND = 0x0014, WM_SETCURSOR = 0x0020, WM_MOUSEMOVE = 0x0200,
         WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202, WM_LBUTTONDBLCLK = 0x0203, WM_RBUTTONDOWN = 0x0204,
-        WM_RBUTTONUP = 0x0205, WM_MBUTTONDOWN = 0x0207, WM_MBUTTONUP = 0x0208, WM_MOUSEWHEEL = 0x020A, WM_CAPTURECHANGED = 0x0215;
+        WM_RBUTTONUP = 0x0205, WM_MBUTTONDOWN = 0x0207, WM_MBUTTONUP = 0x0208, WM_MOUSEWHEEL = 0x020A, WM_CAPTURECHANGED = 0x0215,
+        WM_DROPFILES = 0x0233;
     public const int GWLP_USERDATA = -21;
     public const int MK_SHIFT = 0x4, MK_CONTROL = 0x8;
     public const int VK_MENU = 0x12;
@@ -85,4 +86,43 @@ internal static partial class Win32
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial nint GetModuleHandle(string? name);
+
+    // ---- Arrastre de archivos (shell) -----------------------------------------------------------
+
+    [LibraryImport("shell32.dll", EntryPoint = "DragAcceptFiles")]
+    public static partial void DragAcceptFiles(nint hwnd, [MarshalAs(UnmanagedType.Bool)] bool accept);
+
+    [LibraryImport("shell32.dll", EntryPoint = "DragFinish")]
+    public static partial void DragFinish(nint hDrop);
+
+    /// <summary>Punto de soltar en coordenadas de cliente de la ventana.</summary>
+    [LibraryImport("shell32.dll", EntryPoint = "DragQueryPoint")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DragQueryPoint(nint hDrop, ref POINT point);
+
+    /// <summary>
+    /// Número de archivos del HDROP (index = 0xFFFFFFFF y buffer = 0) o longitud del nombre del índice con buffer = 0.
+    /// El buffer llega como puntero nativo: los wchar no se pueden marshallar con LibraryImport sin DllImport clásico.
+    /// </summary>
+    [LibraryImport("shell32.dll", EntryPoint = "DragQueryFileW")]
+    private static partial uint DragQueryFileRaw(nint hDrop, uint index, nint buffer);
+
+    public static uint DragQueryFileCount(nint hDrop) => DragQueryFileRaw(hDrop, 0xFFFFFFFF, 0);
+
+    public static string DragQueryFileName(nint hDrop, uint index)
+    {
+        var chars = (int)DragQueryFileRaw(hDrop, index, 0);
+        if (chars <= 0)
+            return string.Empty;
+        var buffer = Marshal.AllocHGlobal((chars + 1) * 2);
+        try
+        {
+            DragQueryFileRaw(hDrop, index, buffer);
+            return Marshal.PtrToStringUni(buffer) ?? string.Empty;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
 }

@@ -31,6 +31,9 @@ public sealed class PreviewHost : NativeControlHost
     public event Action<CanvasPointer>? CanvasDoubleClicked;
     public event Action<CanvasPointer>? CanvasWheel;
 
+    /// <summary>Archivos soltados sobre la vista previa (coordenadas de píxel de la ventana nativa).</summary>
+    public event Action<string[], int, int>? FilesDropped;
+
     /// <summary>Cursor que muestra la ventana nativa (lo decide el editor según lo que hay bajo el ratón).</summary>
     public CanvasCursor NativeCursor { get; set; } = CanvasCursor.Arrow;
 
@@ -47,6 +50,7 @@ public sealed class PreviewHost : NativeControlHost
             0, 0, w, h, parent.Handle, 0, Win32.GetModuleHandle(null), 0);
         if (_hwnd == 0)
             throw new InvalidOperationException($"CreateWindowEx falló ({Marshal.GetLastPInvokeError()}).");
+        Win32.DragAcceptFiles(_hwnd, true); // la ventana nativa se traga los arrastres de Avalonia: los acepta aquí
 
         _self = GCHandle.Alloc(this);
         Win32.SetWindowLongPtr(_hwnd, Win32.GWLP_USERDATA, GCHandle.ToIntPtr(_self));
@@ -173,6 +177,19 @@ public sealed class PreviewHost : NativeControlHost
             case Win32.WM_CAPTURECHANGED:
                 _captured = false;
                 return false;
+            case Win32.WM_DROPFILES:
+            {
+                var hDrop = wParam;
+                var count = Win32.DragQueryFileCount(hDrop);
+                var pt = new Win32.POINT();
+                _ = Win32.DragQueryPoint(hDrop, ref pt);
+                var paths = new string[count];
+                for (var i = 0u; i < count; i++)
+                    paths[i] = Win32.DragQueryFileName(hDrop, i);
+                Win32.DragFinish(hDrop);
+                FilesDropped?.Invoke(paths, pt.X, pt.Y);
+                return true;
+            }
             default:
                 return false;
         }

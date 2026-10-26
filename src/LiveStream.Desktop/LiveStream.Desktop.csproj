@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <AvaloniaResource Include="..\..\Assets\generated\LiveStream.ico" Link="Assets\LiveStream.ico" />
+    <AvaloniaResource Include="..\..\Assets\generated\logo-512.png" Link="Assets\logo-512.png" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />

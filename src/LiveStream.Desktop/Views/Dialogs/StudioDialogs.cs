@@ -1,10 +1,12 @@
 using System.Text.Json.Nodes;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LiveStream.Application.Abstractions;
+using LiveStream.Application.Scenes;
 using LiveStream.Application.Sources;
 using LiveStream.Application.Studio;
 using LiveStream.Desktop.Components;
@@ -54,14 +56,19 @@ public static class StudioDialogs
 
     // ---- Añadir fuente ---------------------------------------------------------------------------
 
+    /// <summary>Organiza el catálogo por categorías con icono por tipo y opción de compartir una fuente existente.</summary>
     public static async Task ShowAddSourceAsync(MainViewModel vm)
     {
         if (vm.EditSceneId is not { } sceneId || vm.Dialogs.Owner is not { } owner)
             return;
 
-        var window = NewWindow("Añadir fuente", 760, 520);
+        var window = NewWindow("Añadir fuente", 760, 540);
         var available = SourceCatalog.Entries.Where(e => SourceTypeMap.IsAvailable(e.Kind)).ToList();
-        var kinds = new ListBox { ItemsSource = available.Select(e => e.Label).ToList(), SelectedIndex = 0, Classes = { "studioList" } };
+
+        var categories = available.Select(e => e.Category).Distinct().ToList();
+        SourceCatalog.Entry current = available[0];
+        ToggleButton? currentToggle = null;
+
         var description = new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "muted" } };
         var name = new TextBox();
         var deviceLabel = new TextBlock { Text = "Dispositivo" };
@@ -77,25 +84,81 @@ public static class StudioDialogs
 
         void OnKindChanged()
         {
-            var entry = available[Math.Max(0, kinds.SelectedIndex)];
-            description.Text = entry.Description;
-            name.Text = NextSourceName(vm, entry.DefaultName);
-            var deviceKind = DeviceKindFor(entry.Kind);
+            description.Text = current.Description;
+            name.Text = NextSourceName(vm, current.DefaultName);
+            var deviceKind = DeviceKindFor(current.Kind);
             currentDevices = deviceKind is { } k ? allDevices.Where(d => d.Kind == k).ToList() : [];
             // win-capture nombra los monitores como ": 1920x1080 @ 0,0 (Monitor principal)" cuando no tienen nombre propio.
             devices.ItemsSource = currentDevices.Select(d => d.Name.TrimStart(':', ' ')).ToList();
             devices.SelectedIndex = currentDevices.Count > 0 ? 0 : -1;
             deviceLabel.IsVisible = devices.IsVisible = deviceKind is not null;
-            currentExisting = vm.Project.Sources.Where(s => s.Kind == entry.Kind).ToList();
+            currentExisting = vm.Project.Sources.Where(s => s.Kind == current.Kind).ToList();
             existing.ItemsSource = currentExisting.Select(s => s.Name).ToList();
             existing.SelectedIndex = currentExisting.Count > 0 ? 0 : -1;
             useExisting.IsEnabled = currentExisting.Count > 0;
             if (!useExisting.IsEnabled)
                 createNew.IsChecked = true;
         }
-        kinds.SelectionChanged += (_, _) => OnKindChanged();
-        OnKindChanged();
 
+        ToggleButton Row(SourceCatalog.Entry entry)
+        {
+            var toggle = new ToggleButton
+            {
+                Padding = new Thickness(8, 6),
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
+                    {
+                        new PathIcon { Data = SourceCatalog.Geometry(entry.Kind), Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Center },
+                        new StackPanel
+                        {
+                            Children =
+                            {
+                                new TextBlock { Text = entry.Label },
+                                new TextBlock { Text = entry.Description, Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap, MaxWidth = 190 },
+                            },
+                        },
+                    },
+                },
+            };
+            AutomationProperties.SetName(toggle, entry.Label);
+            toggle.Click += (_, _) =>
+            {
+                if (currentToggle is not null && !ReferenceEquals(currentToggle, toggle))
+                    currentToggle.IsChecked = false;
+                currentToggle = toggle;
+                current = entry;
+                OnKindChanged();
+            };
+            toggle.IsChecked = entry == current;
+            if (toggle.IsChecked == true)
+                currentToggle = toggle;
+            return toggle;
+        }
+
+        var selector = new StackPanel { Spacing = 10, Margin = new Thickness(8) };
+        foreach (var category in categories)
+        {
+            selector.Children.Add(new TextBlock
+            {
+                Text = category.ToUpperInvariant(),
+                Classes = { "muted" },
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold,
+                Margin = new Thickness(4, 2, 0, 0),
+            });
+            var list = new StackPanel { Spacing = 2 };
+            foreach (var entry in available.Where(e => e.Category == category))
+                list.Children.Add(Row(entry));
+            selector.Children.Add(list);
+        }
+        OnKindChanged();
+        var left = new ScrollViewer { Content = selector, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("250,*") };
+        body.Children.Add(new Border { Child = left, Padding = new Thickness(4), Background = new SolidColorBrush(Color.Parse("#FF17191D")) });
         var form = new StackPanel
         {
             Spacing = 10,
@@ -107,8 +170,6 @@ public static class StudioDialogs
                 useExisting, existing, error,
             },
         };
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("240,*") };
-        body.Children.Add(new Border { Child = kinds, Padding = new Thickness(8), Background = new SolidColorBrush(Color.Parse("#FF17191D")) });
         var right = new ScrollViewer { Content = form };
         Grid.SetColumn(right, 1);
         body.Children.Add(right);
@@ -118,7 +179,6 @@ public static class StudioDialogs
         Guid? createdSource = null;
         ok.Click += async (_, _) =>
         {
-            var entry = available[Math.Max(0, kinds.SelectedIndex)];
             if (useExisting.IsChecked == true && existing.SelectedIndex >= 0)
             {
                 var source = currentExisting[existing.SelectedIndex];
@@ -128,15 +188,15 @@ public static class StudioDialogs
             }
             var settings = new JsonObject();
             if (devices.SelectedIndex >= 0 && devices.SelectedIndex < currentDevices.Count)
-                settings[DeviceSettingKey(entry.Kind)!] = currentDevices[devices.SelectedIndex].Id;
-            if (entry.Kind == SourceKind.Text)
+                settings[DeviceSettingKey(current.Kind)!] = currentDevices[devices.SelectedIndex].Id;
+            if (current.Kind == SourceKind.Text)
                 settings["text"] = "Texto";
-            if (entry.Kind == SourceKind.ColorSource)
+            if (current.Kind == SourceKind.ColorSource)
             {
                 settings["width"] = vm.Project.Canvas.Width;
                 settings["height"] = vm.Project.Canvas.Height;
             }
-            var command = new AddSourceCommand(sceneId, string.IsNullOrWhiteSpace(name.Text) ? entry.DefaultName : name.Text.Trim(), entry.Kind, settings.ToJsonString());
+            var command = new AddSourceCommand(sceneId, string.IsNullOrWhiteSpace(name.Text) ? current.DefaultName : name.Text.Trim(), current.Kind, settings.ToJsonString());
             var added = await vm.Run(command);
             if (!added.Success)
             {
@@ -154,8 +214,87 @@ public static class StudioDialogs
             await ShowPropertiesAsync(vm, created, justCreated: true);
     }
 
-    private static string NextSourceName(MainViewModel vm, string baseName)
+    // ---- Crear escena con plantilla --------------------------------------------------------------
+
+    /// <summary>Diálogo de nueva escena: nombre y plantilla preconfigurada (vacía, cámara, gameplay, entrevista…).</summary>
+    public static async Task ShowCreateSceneAsync(MainViewModel vm)
     {
+        if (vm.Dialogs.Owner is not { } owner)
+            return;
+
+        var window = NewWindow("Nueva escena", 620, 470);
+        var name = new TextBox { Watermark = "Nombre de la escena" };
+        var error = new TextBlock { Foreground = Brushes.IndianRed, TextWrapping = TextWrapping.Wrap };
+        var options = SceneTemplates.Options;
+        ToggleButton? currentToggle = null;
+        var current = options[0];
+
+        ToggleButton Row(SceneTemplateOption option)
+        {
+            var toggle = new ToggleButton
+            {
+                Padding = new Thickness(10, 8),
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Content = new StackPanel
+                {
+                    Children =
+                    {
+                        new TextBlock { Text = option.Name, FontWeight = FontWeight.SemiBold },
+                        new TextBlock { Text = option.Hint, Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap },
+                    },
+                },
+            };
+            AutomationProperties.SetName(toggle, option.Name);
+            toggle.Click += (_, _) =>
+            {
+                if (currentToggle is not null && !ReferenceEquals(currentToggle, toggle))
+                    currentToggle.IsChecked = false;
+                currentToggle = toggle;
+                current = option;
+            };
+            toggle.IsChecked = option == current;
+            if (toggle.IsChecked == true)
+                currentToggle = toggle;
+            return toggle;
+        }
+
+        var selector = new StackPanel { Spacing = 6 };
+        foreach (var option in options)
+            selector.Children.Add(Row(option));
+
+        var body = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            Margin = new Thickness(16),
+            RowSpacing = 12,
+        };
+        name.Text = vm.Project.NextSceneName("Escena");
+        var top = new StackPanel { Spacing = 8, Children = { new TextBlock { Text = "Nombre" }, name, error } };
+        body.Children.Add(top);
+        var scroll = new ScrollViewer { Content = selector };
+        Grid.SetRow(scroll, 1);
+        body.Children.Add(scroll);
+
+        var ok = Primary("Crear");
+        var cancel = new Button { Content = "Cancelar", IsCancel = true };
+        ok.Click += async (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(name.Text))
+            {
+                error.Text = "El nombre de la escena no puede estar vacío.";
+                return;
+            }
+            var id = await vm.AddSceneWithTemplateAsync(name.Text.Trim(), current.Kind);
+            if (id is null)
+                error.Text = vm.StatusMessage;
+            else
+                window.Close();
+        };
+        window.Content = Layout(body, cancel, ok);
+        await window.ShowDialog(owner);
+    }
+
+    private static string NextSourceName(MainViewModel vm, string baseName)    {
         if (vm.Project.Sources.All(s => s.Name != baseName))
             return baseName;
         for (var i = 2; ; i++)

@@ -4,7 +4,7 @@
 > `%APPDATA%\StreamPilot` se trasladan a `%APPDATA%\LiveStream`. El prefijo interno `sp_` de la API C y la extensión
 > `.spproj` de los proyectos se mantienen por compatibilidad.
 
-Actualizado a la versión 0.9.0 (cierre de la **Fase 8 — Marca, plugins y marketplace** más la **Fase 9 — Editor de diseño libre de gráficos**). Solo se marca como hecho lo verificado contra libobs real
+Actualizado a la versión 0.9.1 (cierre de la **Fase 8 — Marca, plugins y marketplace**, la **Fase 9 — Editor de diseño libre de gráficos** y la **Fase 10 — Rediseño de escenas, fuentes y drag & drop**). Solo se marca como hecho lo verificado contra libobs real
 en esta máquina (i7-13650HX, Intel UHD + RTX 4050 Laptop, Windows 11, pantalla al 125 %).
 
 ## Fase 1 — Motor (completada)
@@ -178,6 +178,28 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 | Biblioteca de recursos | Imágenes y videos importados a `%APPDATA%\LiveStream\library` (el original puede borrarse), categorías, eliminar, abrir carpeta; disponible en Herramientas y como selector dentro del diseñador; importar y exportar `.lsgfx` (el paquete lleva los recursos incrustados) | Pruebas unitarias (validación de contenido, rutas fuera del archivo, nombres duplicados, recursos ausentes) |
 | Accesos en la UI principal | Botón «Editor de diseño libre» en el panel Gráficos, doble clic (diseñador en diseño libre, formulario en plantillas), menú contextual por fila (diseñar, formulario, convertir, exportar) e «Importar gráfico (.lsgfx)…» en el menú «+» | Compilación y pruebas en verde; queda por verificar el flujo completo a mano en la app con emisión activa |
 
+## Fase 10 — Rediseño de escenas, fuentes y drag & drop (implementada, sin publicar)
+
+| Área | Implementado | Verificación |
+|---|---|---|
+| Escenas con plantillas | Diálogo de nueva escena con nombre y **7 plantillas preconfiguradas** (vacía, pantalla completa, gameplay, entrevista con 2 cámaras, presentación, charla con overlays, solo overlays), aplicadas como comandos deshacibles; también accesible desde el asistente (`AddSceneWithTemplateAsync`) | 6 pruebas unitarias de `SceneTemplates` (crean escena + fuentes verdaderas del motor, no simuladas) |
+| Gestión de escenas por fila | Renombrar (F2), duplicar (Ctrl+D), subir/bajar y eliminar desde el menú contextual o los comandos de fila con la escena bajo el cursor (con retorno a la selección global si se invoca fuera de la lista) | Pruebas unitarias del VM + compilación |
+| Panel de fuentes visual | Catálogo de tipos organizado en 3 categorías con iconos (Captura / Audio / Contenido visual), buscador de escenas y de fuentes, menú contextual con las operaciones (propiedades, filtros, transformación, renombrar, duplicar Ctrl+L con desplazamiento 24 px, capas, eliminar), selección múltiple en la lista y marcador de estado de la escena activa en el catálogo | 3 pruebas unitarias del `SourceCatalog`; flujos compilados |
+| Arrastrar archivos al lienzo | Al soltar archivos del Explorador sobre el lienzo (WM_DROPFILES nativo sobre el HWND hijo, sin detrás de Avalonia): imagen/vídeo → biblioteca y gráfico/elemento colocado cerca del punto de soltado (`DropPlacement` evita solaparse, escalonado de 24 px); audio → fuente de audio referenciada; queda seleccionado lo último importado y cabeza de la pila primero | 7 pruebas unitarias de `DropPlacement`; integración nativa compilada y enlazada al `PreviewHost` |
+| Atajos nuevos | Ctrl+D duplicar escena, Ctrl+L duplicar fuente, Ctrl+H ocultar/mostrar fuente, Ctrl+G bloquear/desbloquear; no interceptan teclas cuando el foco está en un TextBox o NumericUpDown | Compilación; los atajos existentes se conservan |
+| Barra lateral y paneles | Marca (logo) arriba, separadores, «Ajustes» al fondo; iconos en las cabeceras de los 6 paneles del dock (Escenas, Fuentes, Gráficos, Mezclador, Transiciones, Controles); iconografía refinada (Estudio); estados vacíos con guía | Compilación + pruebas |
+| Persistencia de paneles | Anchuras de columnas y altura de las filas del dock se guardan por máquina y se restauran al arrancar (`MachineSettings`) | Pruebas unitarias de la tienda de ajustes |
+| Accesibilidad | Nombres de automatización en los controles nuevos (botones, cuadros de búsqueda, filas); menú contextual de listas selecciona la fila bajo el cursor derecho antes de abrir | Compilación |
+
+## Limitaciones de la Fase 10
+
+- **Reordenar capas arrastrando** en la lista de fuentes no está hecho; se ordena con los botones ▲/▼ o el menú
+  («Subir/Bajar capa»).
+- **Arrastrar desde la biblioteca al lienzo** (fuera del Explorador de archivos) no está conectado: la importación
+  cruzada entre paneles queda pendiente.
+- **Miniaturas de escenas** en la lista: no; el panel muestra el nombre y los marcadores PGM/PVW (la imagen live está
+  en la vista previa y el lienzo).
+
 ## Limitaciones conocidas (reales, no simuladas)
 
 - **Paneles acoplables**: son redimensionables y se pueden restaurar, pero no se pueden arrastrar a otra posición ni
@@ -231,8 +253,9 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 
 ## Pendiente
 
-- Las fases 1-9 están implementadas (la 8 y la 9 sin publicar). Lo pendiente es lo indicado en las limitaciones: pruebas contra
-  plataformas reales y la API de Claude con credenciales, relay SRS/MediaMTX, firma de código y la decisión de licencia.
+- Las fases 1-10 están implementadas (la 8, 9 y 10 sin publicar). Lo pendiente es lo indicado en las limitaciones: pruebas contra
+  plataformas reales y la API de Claude con credenciales, relay SRS/MediaMTX, firma de código y la decisión de licencia,
+  más lo específico de la Fase 10 (reordenar capas por arrastre, drag desde la biblioteca al lienzo, miniaturas de escena).
 
 ## Cómo ejecutar y verificar
 
