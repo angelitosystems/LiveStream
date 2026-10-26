@@ -26,7 +26,7 @@ public sealed class App : Avalonia.Application
         {
             AppLog.Info("app", $"LiveStream iniciado ({Environment.OSVersion}, {Environment.ProcessorCount} hilos)");
             LibObsEngine.Log += (level, message) => AppLog.Write(level.ToUpperInvariant(), "libobs", message);
-            AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Error("app", "Excepción no controlada", e.ExceptionObject as Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Fatal("app", "Excepción no controlada", e.ExceptionObject as Exception);
             TaskScheduler.UnobservedTaskException += (_, e) => AppLog.Error("app", "Tarea con excepción no observada", e.Exception);
 
             try

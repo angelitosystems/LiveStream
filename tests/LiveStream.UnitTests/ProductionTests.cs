@@ -258,6 +258,25 @@ public sealed class ProductionTests
     }
 
     [Fact]
+    public async Task LowerThird_Logo_IsAnImagePiece_FittedInsideTheSameWidth()
+    {
+        var plain = GraphicTemplates.Create(GraphicKind.LowerThird, "Rótulo", _project.Canvas);
+        var withLogo = plain with { Fields = new Dictionary<string, string>(plain.Fields) { ["logo"] = @"C:\logos\iglesia.png" } };
+
+        var before = GraphicTemplates.Layout(plain, _project.Canvas);
+        var after = GraphicTemplates.Layout(withLogo, _project.Canvas);
+        var logo = after.Elements.Single(e => e.Key == "logo");
+        Assert.Equal(GraphicElementKind.Image, logo.Kind);
+        Assert.Equal(before.Bounds.Right, after.Bounds.Right, 3);
+        Assert.True(after.Elements.Single(e => e.Key == "name").X > logo.X + logo.Width);
+
+        await Ok(new AddGraphicCommand(withLogo));
+        var source = _engine.Sources[GraphicLayer.ElementSourceId(withLogo.Id, "logo")];
+        Assert.Equal(SourceKind.Image, source.Kind);
+        Assert.Contains("iglesia.png", source.SettingsJson);
+    }
+
+    [Fact]
     public async Task GraphicsService_Countdown_RunsAndShowsFinishedText()
     {
         var countdown = GraphicTemplates.Create(GraphicKind.Countdown, "Cuenta", _project.Canvas) with
@@ -278,6 +297,33 @@ public sealed class ProductionTests
 
         service.ResetCountdown(countdown.Id);
         Assert.Equal(TimeSpan.FromSeconds(1), service.GetCountdown(countdown.Id).Remaining);
+    }
+
+    [Theory]
+    [InlineData("19:30", "2026-10-25 19:00", 30 * 60)]       // más tarde hoy
+    [InlineData("19:30", "2026-10-25 19:45", -15 * 60)]      // acaba de pasar: terminada
+    [InlineData("01:00", "2026-10-25 23:00", 2 * 3600)]      // mañana de madrugada
+    public void Countdown_EndsAt_CountsToTheNextTimeOnTheClock(string endsAt, string now, int expectedSeconds)
+    {
+        var until = GraphicTemplates.UntilEndsAt(GraphicTemplates.ParseEndsAt(endsAt)!.Value, DateTime.Parse(now, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), until);
+    }
+
+    [Fact]
+    public async Task Countdown_WithEndsAt_RunsFromTheSystemClock_AndRejectsBadTimes()
+    {
+        var endsAt = TimeOnly.FromDateTime(DateTime.Now.AddMinutes(10));
+        var countdown = GraphicTemplates.Create(GraphicKind.Countdown, "Evento", _project.Canvas) with
+        {
+            Fields = new Dictionary<string, string> { ["duration"] = "05:00", ["endsAt"] = endsAt.ToString("HH:mm:ss") },
+        };
+        await Ok(new AddGraphicCommand(countdown));
+        await using var service = new GraphicsService(_executor);
+
+        var status = service.GetCountdown(countdown.Id);
+        Assert.True(status.Running);
+        Assert.InRange(status.Remaining, TimeSpan.FromMinutes(9.9), TimeSpan.FromMinutes(10));
+        Assert.NotNull(GraphicTemplates.ValidateFields(countdown with { Fields = new Dictionary<string, string> { ["duration"] = "05:00", ["endsAt"] = "25:99" } }));
     }
 
     [Fact]

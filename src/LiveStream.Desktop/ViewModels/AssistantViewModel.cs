@@ -36,7 +36,7 @@ public sealed partial class AssistantViewModel : ObservableObject
     {
         _main = main;
         _secrets = secrets;
-        var toolbox = new AssistantToolbox(main.Session, main, ConfirmAsync, main.Optimizer.Report);
+        var toolbox = new AssistantToolbox(main.Session, main, ConfirmAsync, main.Optimizer.Report, main.Brand.Load);
         _agent = new ClaudeAssistant(toolbox, GetApiKeyAsync);
         _ = RefreshKeyStateAsync();
     }

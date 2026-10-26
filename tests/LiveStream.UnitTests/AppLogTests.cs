@@ -18,4 +18,18 @@ public sealed class AppLogTests
     [Fact]
     public void Redact_LeavesOtherTextAlone() =>
         Assert.Equal("Output 'sp_stream': stopping", AppLog.Redact("Output 'sp_stream': stopping"));
+
+    [Fact]
+    public void Fatal_IsOnDiskWithItsStackTrace_BeforeReturning()
+    {
+        var marker = Guid.NewGuid().ToString("N");
+        Exception thrown;
+        try { throw new InvalidOperationException(marker); }
+        catch (InvalidOperationException ex) { thrown = ex; }
+
+        AppLog.Fatal("test", "cierre", thrown);
+
+        var line = File.ReadLines(AppLog.CurrentFile).Single(l => l.Contains(marker));
+        Assert.Contains(nameof(Fatal_IsOnDiskWithItsStackTrace_BeforeReturning), line);
+    }
 }

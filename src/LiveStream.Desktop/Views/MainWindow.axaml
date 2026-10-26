@@ -83,6 +83,9 @@
             <MenuItem Header="Propiedades de la fuente…" Click="OnProperties" />
             <MenuItem Header="Filtros de la fuente…" Click="OnSourceFilters" />
             <MenuItem Header="Ajustes de la transición…" Click="OnTransitionSettings" />
+            <MenuItem Header="Kit de marca…" Click="OnBrandKit" />
+            <MenuItem Header="Biblioteca de recursos de gráficos…" Click="OnResourceLibrary" />
+            <MenuItem Header="Marketplace de plugins…" Click="OnMarketplace" />
             <MenuItem Header="Rendimiento y optimización…" Click="OnPerformance" />
             <MenuItem Header="Abrir carpeta de grabaciones" Click="OnOpenRecordings" />
             <MenuItem Header="Abrir carpeta de proyectos" Click="OnOpenProjects" />
@@ -420,6 +423,7 @@
                     </Button.Flyout>
                   </Button>
                   <Button Classes="icon" Click="OnAddGraphicFromTemplate" AutomationProperties.Name="Añadir desde plantilla guardada" ToolTip.Tip="Añadir desde plantilla guardada"><PathIcon Data="{StaticResource Icon.Template}" /></Button>
+                  <Button Classes="icon" Click="OnDesignGraphic" AutomationProperties.Name="Editor de diseño libre" ToolTip.Tip="Editor de diseño libre (lienzo con capas)"><PathIcon Data="{StaticResource Icon.Layers}" /></Button>
                   <Button Classes="icon" Click="OnEditGraphic" AutomationProperties.Name="Editar gráfico" ToolTip.Tip="Editar gráfico"><PathIcon Data="{StaticResource Icon.Pencil}" /></Button>
                   <Button Classes="icon" Command="{Binding DuplicateGraphicCommand}" AutomationProperties.Name="Duplicar gráfico" ToolTip.Tip="Duplicar gráfico"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
                   <Button Classes="icon" Command="{Binding RemoveGraphicCommand}" AutomationProperties.Name="Eliminar gráfico" ToolTip.Tip="Eliminar gráfico"><PathIcon Data="{StaticResource Icon.Trash}" /></Button>
@@ -435,6 +439,15 @@
               <TextBlock Text="Rótulos, titulares, cintillos, marcadores, cuentas atrás… Pulsa + para crear uno; AIRE lo lanza sobre el programa."
                          Classes="muted" TextWrapping="Wrap" Margin="12" IsVisible="{Binding !Graphics.Count}" />
               <ListBox x:Name="GraphicList" Classes="studioList" ItemsSource="{Binding Graphics}" SelectedItem="{Binding SelectedGraphic}" DoubleTapped="OnGraphicDoubleTapped">
+                <ListBox.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="Diseñar (editor de diseño libre)" Click="OnDesignGraphic" />
+                    <MenuItem Header="Editar formulario…" Click="OnEditGraphic" />
+                    <Separator />
+                    <MenuItem Header="Convertir en diseño libre…" Click="OnConvertGraphic" />
+                    <MenuItem Header="Exportar (.lsgfx)…" Click="OnExportGraphic" />
+                  </ContextMenu>
+                </ListBox.ContextMenu>
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:GraphicRowViewModel">
                     <DockPanel>

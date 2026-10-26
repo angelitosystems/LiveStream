@@ -11,13 +11,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/angelitosystems/LiveStream/releases"><img alt="Versión" src="https://img.shields.io/badge/versión-0.8.1-3d8bff" /></a>
+  <a href="https://github.com/angelitosystems/LiveStream/releases"><img alt="Versión" src="https://img.shields.io/badge/versión-0.9.0-3d8bff" /></a>
   <a href="LICENSE"><img alt="Licencia" src="https://img.shields.io/badge/licencia-GPL--2.0--or--later-b13cff" /></a>
   <img alt="Plataforma" src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-22d3ff" />
   <a href="https://github.com/sponsors/angelitosystems"><img alt="Auspicia" src="https://img.shields.io/badge/♥-auspicia-ff2d8a" /></a>
 </p>
 
-> Estado: versión **0.8.1**. Las siete fases del plan están implementadas y verificadas contra libobs real en
+> Estado: versión **0.9.0**, con plugins en procesos aparte, marketplace y SDK de plugins. Las siete fases del plan están implementadas y verificadas contra libobs real en
 > Windows 11. Lo que no se ha podido probar (por ejemplo, emitir a plataformas reales sin credenciales) está detallado
 > en [docs/ESTADO.md](docs/ESTADO.md). Los cambios de cada versión están en [CHANGELOG.md](CHANGELOG.md).
 
@@ -39,15 +39,18 @@
 - **Asistente de IA** (Claude, de Anthropic): crea escenas, añade fuentes, ajusta audio, lanza gráficos… con
   herramientas validadas; emitir, detener la emisión o borrar piden confirmación. Necesita una clave de API de
   Anthropic (se guarda cifrada en el equipo).
+- **Marca y plugins**: kit de marca (colores, tipografía y logo para todos los gráficos, exportable), logo en los
+  rótulos, y plugins que se ejecutan en procesos aislados, se instalan desde un marketplace con paquetes firmados y
+  se desarrollan con el SDK (`docs/plugins/SDK.md`).
 
 ## Instalar
 
-Descarga `LiveStream-Setup-0.8.1.exe` de la sección [Releases](https://github.com/angelitosystems/LiveStream/releases)
+Descarga `LiveStream-Setup-0.9.0.exe` de la sección [Releases](https://github.com/angelitosystems/LiveStream/releases)
 y ejecútalo. Un asistente te guía en cuatro pasos (bienvenida, opciones, instalación y listo): eliges la carpeta y si
 quieres acceso en el menú Inicio y en el escritorio. Instala solo para tu usuario (no pide administrador) en
 `%LOCALAPPDATA%\Programs\LiveStream` y se desinstala desde «Aplicaciones instaladas». También hay un `.zip` portable.
 
-Instalación desatendida: `LiveStream-Setup-0.8.1.exe /quiet [/dir <carpeta>] [/noshortcuts]` (detalles en
+Instalación desatendida: `LiveStream-Setup-0.9.0.exe /quiet [/dir <carpeta>] [/noshortcuts]` (detalles en
 [docs/DISTRIBUCION.md](docs/DISTRIBUCION.md)).
 
 Requisitos: Windows 10/11 x64 y una GPU con Direct3D 11. El instalador no está firmado con Authenticode, así que
@@ -55,6 +58,22 @@ Windows SmartScreen puede mostrar un aviso.
 
 Tus proyectos, ajustes y claves cifradas se guardan en `%APPDATA%\LiveStream` y se conservan al desinstalar o
 actualizar.
+
+### SDK de plugins
+
+La versión del SDK se distribuye aparte, en
+[LiveStream-SDK](https://github.com/angelitosystems/LiveStream-SDK/releases): el instalador deja el CLI `lsplugin`
+(autocontenido) en el PATH de tu usuario, junto con el esquema, la documentación y el paquete NuGet local para crear
+plugins:
+
+```powershell
+lsplugin new mi-plugin --id com.empresa.miplugin --name "Mi plugin"
+cd mi-plugin
+dotnet publish -c Release
+lsplugin pack bin\Release\net10.0\win-x64\
+```
+
+Guía completa en [docs/plugins/SDK.md](docs/plugins/SDK.md).
 
 ## Compilar desde el código
 
@@ -92,6 +111,10 @@ Más detalles (actualizaciones firmadas, firma de código, prueba de resistencia
 | `Assets/` | Logo e icono originales; `Assets/generated` tiene las versiones con fondo transparente y el `.ico` |
 | `tools/LiveStream.Soak` | Prueba de resistencia de larga duración |
 | `scripts/` | Compilación nativa, empaquetado, firma de actualizaciones, inventario de licencias, automatización de la UI |
+| `src/LiveStream.PluginSdk` | SDK de plugins: manifiesto, paquetes `.lsplugin`, firma y protocolo JSON-RPC |
+| `sdk/` | Plugin de ejemplo y esquema del manifiesto |
+| `tools/LiveStream.PluginTool` | `lsplugin`: crear, empaquetar, firmar y publicar plugins |
+| `marketplace/` | Backend del marketplace (Docker/Coolify) y prueba de extremo a extremo |
 
 Toda modificación del estudio (desde la interfaz, el asistente o el optimizador) pasa por un único ejecutor de
 comandos que valida, serializa y permite deshacer.
@@ -103,6 +126,8 @@ comandos que valida, serializa y permite deshacer.
 - El asistente no puede elegir archivos, no ve servidores ni claves y no accede al motor directamente.
 - Las actualizaciones solo se aceptan si el manifiesto está firmado (ECDSA P-256) y el instalador coincide con el
   tamaño y SHA-256 firmados.
+- Los plugins solo se instalan firmados por el publicador (salvo en modo desarrollador), con los permisos aceptados
+  por el usuario, en un proceso aparte que Windows cierra si LiveStream termina (`docs/plugins/MARKETPLACE.md`).
 
 ## Firma de código
 

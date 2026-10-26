@@ -1,0 +1,4 @@
+bin/
+obj/
+*.lsplugin
+*.lsplugin.sig.json

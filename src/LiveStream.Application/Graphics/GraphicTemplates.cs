@@ -4,7 +4,8 @@ using LiveStream.Domain.Graphics;
 namespace LiveStream.Application.Graphics;
 
 /// <summary>Campo editable de una plantilla.</summary>
-public sealed record GraphicFieldDefinition(string Key, string Label, string Default, bool Multiline = false);
+/// <param name="FileFilter">Si no es null, el campo es la ruta de un archivo y el editor ofrece «Examinar…» con este filtro.</param>
+public sealed record GraphicFieldDefinition(string Key, string Label, string Default, bool Multiline = false, string? FileFilter = null);
 
 public enum GraphicElementKind
 {
@@ -14,6 +15,10 @@ public enum GraphicElementKind
     Text,
     /// <summary>Texto de ancho natural que se desplaza dentro de su caja (scroll_filter).</summary>
     Ticker,
+    /// <summary>Imagen (image_source) encajada en su caja sin deformarla; Text es la ruta del archivo.</summary>
+    Image,
+    /// <summary>Video en bucle (ffmpeg_source) estirado a su caja; Text es la ruta del archivo.</summary>
+    Video,
 }
 
 /// <summary>Pieza de un gráfico en coordenadas absolutas del lienzo.</summary>
@@ -28,7 +33,10 @@ public sealed record GraphicElement(
     string Text = "",
     double FontSize = 0,
     bool Bold = false,
-    string Align = "left");
+    string Align = "left",
+    double Rotation = 0,
+    /// <summary>Elemento de diseño libre del que sale la pieza (degradado, contorno, opacidad, recorte...).</summary>
+    DesignElement? Design = null);
 
 public sealed record GraphicLayout(IReadOnlyList<GraphicElement> Elements)
 {
@@ -43,7 +51,7 @@ public sealed record GraphicLayout(IReadOnlyList<GraphicElement> Elements)
 /// campos, colores o posición se aplique en vivo sin recrear nada en el motor. Las medidas se diseñan para
 /// 1080 px de lado corto y escalan con el lienzo y con <see cref="Graphic.Scale"/>.
 /// </summary>
-public static class GraphicTemplates
+public static partial class GraphicTemplates
 {
     public const double Margin = 96;
 
@@ -59,17 +67,22 @@ public static class GraphicTemplates
         GraphicKind.Scoreboard => "Marcador deportivo",
         GraphicKind.LiveBadge => "Mosca EN VIVO",
         GraphicKind.Alert => "Alerta",
+        GraphicKind.Custom => "Diseño libre",
         _ => kind.ToString(),
     };
 
+    /// <summary>Filtro de archivo (formato de libobs) para logos e imágenes de gráficos.</summary>
+    public const string ImageFilter = "Imágenes (*.png *.jpg *.jpeg *.webp *.gif);;Todos (*.*)";
+
     public static IReadOnlyList<GraphicFieldDefinition> Fields(GraphicKind kind) => kind switch
     {
-        GraphicKind.LowerThird => [new("name", "Nombre", "Nombre Apellido"), new("title", "Cargo / descripción", "Cargo")],
+        GraphicKind.LowerThird => [new("name", "Nombre", "Nombre Apellido"), new("title", "Cargo / descripción", "Cargo"),
+            new("logo", "Logo (imagen, opcional)", "", FileFilter: ImageFilter)],
         GraphicKind.Headline => [new("label", "Etiqueta", "ÚLTIMA HORA"), new("headline", "Titular", "Titular de la noticia")],
         GraphicKind.Ticker => [new("label", "Etiqueta", "NOTICIAS"), new("items", "Noticias (una por línea)", "Primera noticia\nSegunda noticia", true),
             new("speed", "Velocidad (px/s)", "120")],
         GraphicKind.Countdown => [new("label", "Etiqueta", "EMPEZAMOS EN"), new("duration", "Duración (mm:ss)", "05:00"),
-            new("finished", "Texto al terminar", "¡YA!")],
+            new("finished", "Texto al terminar", "¡YA!"), new("endsAt", "Hora de fin (hh:mm, opcional; sustituye a la duración)", "")],
         GraphicKind.Clock => [new("format", "Formato (.NET)", "HH:mm")],
         GraphicKind.Scoreboard => [new("home", "Local", "LOCAL"), new("away", "Visitante", "VISITANTE"), new("homeScore", "Tanteo local", "0"),
             new("awayScore", "Tanteo visitante", "0"), new("period", "Periodo", "1T"), new("clock", "Tiempo", "00:00")],
@@ -78,8 +91,43 @@ public static class GraphicTemplates
         _ => [],
     };
 
-    /// <summary>Gráfico nuevo con valores por defecto, colocado según su tipo.</summary>
-    public static Graphic Create(GraphicKind kind, string name, CanvasSettings canvas, Guid? id = null)
+    /// <summary>
+    /// Campos de un gráfico concreto. En un diseño libre son los marcadores {campo} de sus textos, más los de la
+    /// cuenta atrás si algún texto la muestra.
+    /// </summary>
+    public static IReadOnlyList<GraphicFieldDefinition> FieldsOf(Graphic g)
+    {
+        if (g.Kind != GraphicKind.Custom)
+            return Fields(g.Kind);
+        var keys = (g.Design ?? []).Where(e => e.Kind == DesignElementKind.Text && e.Binding == DesignBinding.None)
+            .SelectMany(e => TokenPattern().Matches(e.Text).Select(m => m.Groups[1].Value)).Distinct().ToList();
+        var defs = keys.Select(k => new GraphicFieldDefinition(k, k, "")).ToList();
+        if (HasCountdown(g))
+            defs.AddRange(Fields(GraphicKind.Countdown).Where(f => f.Key != "label" && !keys.Contains(f.Key)));
+        return defs;
+    }
+
+    /// <summary>El gráfico tiene una cuenta atrás que se puede iniciar, pausar y reiniciar.</summary>
+    public static bool HasCountdown(Graphic g) =>
+        g.Kind == GraphicKind.Countdown || g.Design?.Any(e => e.Binding == DesignBinding.Countdown && e.Visible) == true;
+
+    /// <summary>Claves de las piezas cuyo texto calcula el estudio en cada momento (reloj, cuenta atrás).</summary>
+    public static IEnumerable<string> LiveKeys(Graphic g) => g.Kind switch
+    {
+        GraphicKind.Countdown or GraphicKind.Clock => ["time"],
+        GraphicKind.Custom => (g.Design ?? []).Where(e => e.Visible && e.Binding != DesignBinding.None).Select(e => e.Key),
+        _ => [],
+    };
+
+    /// <summary>Sustituye {campo} por su valor; un marcador sin campo se deja tal cual.</summary>
+    public static string ReplaceTokens(string text, IReadOnlyDictionary<string, string> fields) =>
+        TokenPattern().Replace(text, m => fields.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\{([a-zA-Z][a-zA-Z0-9_]{0,39})\}")]
+    private static partial System.Text.RegularExpressions.Regex TokenPattern();
+
+    /// <summary>Gráfico nuevo con valores por defecto (o los de <paramref name="brand"/>), colocado según su tipo.</summary>
+    public static Graphic Create(GraphicKind kind, string name, CanvasSettings canvas, Guid? id = null, BrandKit? brand = null)
     {
         var fields = Fields(kind).ToDictionary(f => f.Key, f => f.Default);
         var k = Unit(canvas);
@@ -104,8 +152,23 @@ public static class GraphicTemplates
             GraphicKind.Scoreboard => (GraphicAnimation.SlideFromTop, GraphicAnimation.SlideFromTop),
             _ => (GraphicAnimation.Fade, GraphicAnimation.Fade),
         };
-        return new Graphic(id ?? Guid.NewGuid(), name, kind, fields, new GraphicStyle(), Math.Round(x), Math.Round(y),
-            AnimationIn: animIn, AnimationOut: animOut, AutoHideSeconds: kind == GraphicKind.Alert ? 6 : 0);
+        IReadOnlyList<DesignElement>? design = null;
+        if (kind == GraphicKind.Custom)
+        {
+            // Punto de partida editable: un panel y un título enlazado al campo {titulo}.
+            var style = brand?.Style ?? new GraphicStyle();
+            fields["titulo"] = "Título";
+            design =
+            [
+                new DesignElement("panel", "Panel", DesignElementKind.Rect, 0, 0, Math.Round(800 * k), Math.Round(140 * k), Color: style.SecondaryColor),
+                new DesignElement("titulo", "Título", DesignElementKind.Text, Math.Round(32 * k), 0, Math.Round(740 * k), Math.Round(140 * k),
+                    Color: style.TextColor, Text: "{titulo}", FontFace: style.FontFace, FontSize: Math.Round(56 * k), Bold: true),
+            ];
+            (x, y) = (Margin * k, canvas.Height - 260 * k);
+        }
+        var graphic = new Graphic(id ?? Guid.NewGuid(), name, kind, fields, new GraphicStyle(), Math.Round(x), Math.Round(y),
+            AnimationIn: animIn, AnimationOut: animOut, AutoHideSeconds: kind == GraphicKind.Alert ? 6 : 0, Design: design);
+        return brand is null ? graphic : brand.ApplyTo(graphic);
     }
 
     /// <summary>
@@ -128,13 +191,46 @@ public static class GraphicTemplates
 
         switch (g.Kind)
         {
-            case GraphicKind.LowerThird:
-                Rect("accent", 0, 0, 12, 120, s.PrimaryColor);
-                Rect("nameBox", 12, 0, 820, 72, s.SecondaryColor);
-                Text("name", 40, 0, 780, 72, s.TextColor, g.Field("name"), 44, bold: true);
-                Rect("titleBox", 12, 72, 700, 48, s.PrimaryColor);
-                Text("title", 40, 72, 660, 48, s.AccentTextColor, g.Field("title"), 28);
+            case GraphicKind.Custom:
+                foreach (var e in g.Design ?? [])
+                {
+                    if (!e.Visible)
+                        continue;
+                    var kind = e.Kind switch
+                    {
+                        DesignElementKind.Rect => GraphicElementKind.Rect,
+                        DesignElementKind.Image => GraphicElementKind.Image,
+                        DesignElementKind.Video => GraphicElementKind.Video,
+                        _ => GraphicElementKind.Text,
+                    };
+                    var content = e.Kind is DesignElementKind.Image or DesignElementKind.Video ? e.Path ?? ""
+                        : text?.Invoke(e.Key) ?? ReplaceTokens(e.Text, g.Fields);
+                    var size = g.Scale;
+                    // La sombra es una pieza más, debajo y desplazada (libobs no tiene sombra en texto GDI+ ni en formas).
+                    if (e.ShadowColor is { } shadow && e.Kind is DesignElementKind.Rect or DesignElementKind.Text)
+                        list.Add(new GraphicElement(e.Key + "-shadow", kind, g.X + (e.X + e.ShadowX) * size, g.Y + (e.Y + e.ShadowY) * size,
+                            e.Width * size, e.Height * size, shadow, content, e.FontSize * size, e.Bold, e.Align, e.Rotation,
+                            e with { Color = shadow, GradientColor = null, OutlineColor = null, OutlineSize = 0 }));
+                    list.Add(new GraphicElement(e.Key, kind, g.X + e.X * size, g.Y + e.Y * size, e.Width * size, e.Height * size,
+                        e.Color, content, e.FontSize * size, e.Bold, e.Align, e.Rotation, e));
+                }
                 break;
+
+            case GraphicKind.LowerThird:
+            {
+                // La pieza del logo existe siempre (las piezas no cambian en vivo); sin logo es un punto vacío.
+                var logo = g.Field("logo").Trim();
+                var dx = logo.Length > 0 ? 132 : 0;
+                list.Add(new GraphicElement("logo", GraphicElementKind.Image, g.X, g.Y, logo.Length > 0 ? 120 * k : 1, logo.Length > 0 ? 120 * k : 1,
+                    "#00000000", logo));
+                Rect("accent", dx, 0, 12, 120, s.PrimaryColor);
+                // El logo ocupa parte del ancho de las cajas: el rótulo mide lo mismo y sigue cabiendo en vertical.
+                Rect("nameBox", dx + 12, 0, 820 - dx, 72, s.SecondaryColor);
+                Text("name", dx + 40, 0, 780 - dx, 72, s.TextColor, g.Field("name"), 44, bold: true);
+                Rect("titleBox", dx + 12, 72, 700 - dx, 48, s.PrimaryColor);
+                Text("title", dx + 40, 72, 660 - dx, 48, s.AccentTextColor, g.Field("title"), 28);
+                break;
+            }
 
             case GraphicKind.Headline:
             {
@@ -238,6 +334,18 @@ public static class GraphicTemplates
             : new TimeSpan(values[0], values[1], values[2]);
     }
 
+    /// <summary>"" = sin hora de fin; null = texto no válido.</summary>
+    public static TimeOnly? ParseEndsAt(string text) =>
+        TimeOnly.TryParseExact(text.Trim(), ["H:mm", "H:mm:ss"], out var t) ? t : null;
+
+    /// <summary>Tiempo hasta la próxima vez que el reloj marque <paramref name="endsAt"/>.</summary>
+    public static TimeSpan UntilEndsAt(TimeOnly endsAt, DateTime now)
+    {
+        var remaining = now.Date + endsAt.ToTimeSpan() - now;
+        // Pasada hace menos de 12 h: ya terminó (muestra el texto final). Si hace más, es la de mañana.
+        return remaining < TimeSpan.FromHours(-12) ? remaining + TimeSpan.FromDays(1) : remaining;
+    }
+
     public static string FormatRemaining(TimeSpan remaining)
     {
         var total = (int)Math.Ceiling(Math.Max(0, remaining.TotalSeconds));
@@ -248,8 +356,14 @@ public static class GraphicTemplates
     {
         switch (g.Kind)
         {
+            case GraphicKind.Custom when HasCountdown(g) && ParseDuration(g.Field("duration")) is null:
+                return "Duración de la cuenta atrás no válida: usa mm:ss, hh:mm:ss o segundos.";
+            case GraphicKind.Custom when HasCountdown(g) && g.Field("endsAt").Trim().Length > 0 && ParseEndsAt(g.Field("endsAt")) is null:
+                return "Hora de fin no válida: usa hh:mm (p. ej. 19:30) o déjala vacía.";
             case GraphicKind.Countdown when ParseDuration(g.Field("duration")) is null:
                 return "Duración no válida: usa mm:ss, hh:mm:ss o segundos.";
+            case GraphicKind.Countdown when g.Field("endsAt").Trim().Length > 0 && ParseEndsAt(g.Field("endsAt")) is null:
+                return "Hora de fin no válida: usa hh:mm (p. ej. 19:30) o déjala vacía.";
             case GraphicKind.Ticker when !double.TryParse(g.Field("speed"), System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var speed) || speed is < 10 or > 500:
                 return "La velocidad del cintillo debe estar entre 10 y 500 px/s.";

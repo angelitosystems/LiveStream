@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- LibraryImport (objeto de trabajo de Windows para aislar plugins). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\LiveStream.Application\LiveStream.Application.csproj" />
+    <ProjectReference Include="..\LiveStream.PluginSdk\LiveStream.PluginSdk.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Anthropic" />
@@ -10,7 +15,11 @@
     <InternalsVisibleTo Include="LiveStream.UnitTests" />
   </ItemGroup>
   <!-- Clave pública de publicación (scripts/new-release-key.ps1). Sin ella, las actualizaciones quedan desactivadas. -->
-  <ItemGroup Condition="Exists('Updateselease-public-key.pem')">
-    <EmbeddedResource Include="Updateselease-public-key.pem" LogicalName="release-public-key.pem" />
+  <ItemGroup Condition="Exists('Updates\release-public-key.pem')">
+    <EmbeddedResource Include="Updates\release-public-key.pem" LogicalName="release-public-key.pem" />
+  </ItemGroup>
+  <!-- Clave pública del publicador de plugins (PluginTool keygen). Sin ella solo se instalan plugins en modo desarrollador. -->
+  <ItemGroup Condition="Exists('Plugins\plugin-public-key.pem')">
+    <EmbeddedResource Include="Plugins\plugin-public-key.pem" LogicalName="plugin-public-key.pem" />
   </ItemGroup>
 </Project>

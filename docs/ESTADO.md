@@ -4,7 +4,7 @@
 > `%APPDATA%\StreamPilot` se trasladan a `%APPDATA%\LiveStream`. El prefijo interno `sp_` de la API C y la extensión
 > `.spproj` de los proyectos se mantienen por compatibilidad.
 
-Actualizado a la versión 0.8.1 (cierre de la **Fase 7 — Calidad y distribución** más el asistente de instalación). Solo se marca como hecho lo verificado contra libobs real
+Actualizado a la versión 0.9.0 (cierre de la **Fase 8 — Marca, plugins y marketplace** más la **Fase 9 — Editor de diseño libre de gráficos**). Solo se marca como hecho lo verificado contra libobs real
 en esta máquina (i7-13650HX, Intel UHD + RTX 4050 Laptop, Windows 11, pantalla al 125 %).
 
 ## Fase 1 — Motor (completada)
@@ -136,6 +136,48 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 3. **`scripts/capture-window.ps1`** copiaba la región de la pantalla: si otra ventana quedaba encima, la capturaba. Ahora
    usa `PrintWindow` (solo la ventana pedida); esta versión del script no se ha vuelto a ejecutar.
 
+## Fase 8 — Marca, plugins y marketplace (implementada, sin publicar)
+
+| Área | Implementado | Verificación |
+|---|---|---|
+| Kit de marca | Colores, tipografía y logo predeterminados para gráficos nuevos (interfaz y asistente), «Aplicar a todos» en un solo comando que se deshace de una vez, exportar/importar `.lsbrand` con el logo incrustado (solo imágenes, 5 MB como máximo, sin rutas del archivo importado) | 7 casos de prueba unitaria; diálogo abierto y capturado en la app real |
+| Lower thirds y cuenta atrás | Logo en el rótulo (`image_source` encajado sin deformar, mismo ancho total); cuenta atrás por «Hora de fin» contra el reloj del sistema | Pruebas unitarias; integración contra libobs real con la pieza de imagen |
+| Plugins | Proceso aparte por plugin, JSON-RPC 2.0 por stdio, API v1 = herramientas tipadas del estudio filtradas por permisos (`studio.read`, `studio.modify`, `studio.live`); Job Object de Windows (sin huérfanos, 1 GB por plugin); reinicio con espera y parada tras 3 cierres en 10 min; sin `ANTHROPIC_API_KEY` en su entorno; ajustes tipados; dependencias; instalación atómica fuera de la carpeta de la app | 16 casos de prueba, con el plugin de ejemplo como proceso real: uso de la API, permisos denegados, cierre forzado → reinicio con otro PID, desactivar sin dejar procesos; paquetes con rutas `..`, firmas ajenas o manipuladas, dependencias y versiones |
+| Marketplace (app) | Catálogo remoto (HTTPS) y repositorio local, entradas y descargas verificadas con la clave del publicador, búsqueda, filtros (todos / instalados / actualizaciones), ficha con permisos, versión, compatibilidad, dependencias y cambios, aceptación de permisos, activar/desactivar/desinstalar, ajustes, modo desarrollador | Pruebas con catálogo HTTP simulado (entrada manipulada descartada, descarga alterada rechazada, HTTP rechazado); diálogo abierto y capturado en la app real |
+| Backend y publicación | `marketplace/server` (ASP.NET Core sin dependencias externas), Docker no root con HEALTHCHECK, compose para Coolify, límite de peticiones, token comparado en tiempo constante, firma verificada también en el servidor, versiones inmutables, retirada/restauración, historial del índice, copia de seguridad; `lsplugin` (new, validate, pack, keygen, sign, verify, publish, yank, unyank, list, backup) | `marketplace/smoke-test.ps1`: 13 comprobaciones de extremo a extremo correctas; imagen Docker construida y en marcha: *healthy*, usuario `app`, sale con error si falta configuración |
+
+### Fallos encontrados y corregidos en la Fase 8
+
+1. **Cierres sin rastro**: el manejador de excepciones no controladas encolaba la línea y el proceso moría antes de
+   escribirla. Ahora `AppLog.Fatal` espera a que llegue al disco e incluye la pila.
+2. **Clave de actualizaciones nunca incrustada**: la ruta del `.csproj` tenía un retorno de carro en lugar de `\r`.
+3. **Paquetes no reproducibles**: no se podía fijar la fecha de una entrada ZIP ya escrita (corregido en `Pack`).
+4. **Copia de seguridad del backend**: el ZIP se cerraba con E/S síncrona sobre la respuesta; ahora se genera en un
+   temporal.
+
+### Limitaciones de la Fase 8
+
+- **Aislamiento**: el plugin corre con los permisos del usuario de Windows; los permisos limitan la API de LiveStream,
+  no el sistema de archivos ni la red. Por eso solo se instalan paquetes firmados. AppContainer: ver
+  `docs/plugins/PORTAL-FUTURO.md`.
+- **Sin clave de publicador generada**: hasta ejecutar `lsplugin keygen`, la app solo instala plugins sin firma en
+  modo desarrollador y descarta todo el catálogo.
+- **Backend no desplegado**: verificado en local y en Docker; el despliegue en Coolify requiere dominio y acceso al VPS.
+- **Marketplace sin capturas, favoritos ni valoraciones**: la ficha muestra texto (descripción, permisos, cambios).
+- **Los plugins no añaden interfaz propia ni tipos de fuente**: actúan a través de las herramientas del estudio.
+
+## Fase 9 — Editor de diseño libre de gráficos (implementada, sin publicar)
+
+| Área | Implementado | Verificación |
+|---|---|---|
+| Editor de diseño libre | Ventana diseñador con lienzo interactivo (`DesignCanvas`): selección por clic, Ctrl y recuadro, arrastre (con guías magnéticas a bordes/centros de otros elementos y a la cuadrícula), redimensionado con tiradores, giro, zoom con rueda y botón central, cuadrícula y guías activables, encuadre automático | Pruebas unitarias de `DesignOps` (hit-test con giro, alineación, distribución, apilado, guías y duplicado); la interacción de ratón se ha comprobado compilando y con capturas pendientes de rehacer con la ventana abierta |
+| Elementos | Texto (con vivo: reloj, cuenta atrás y campos `{x}`), forma (rectángulo con color y opacidad), imagen y video (ruta desde la biblioteca o archivo, recorte, silenciado, en bucle) con opacidad, capas visibles/bloqueadas, duplicar y hasta 200 elementos | Pruebas unitarias: el diseño libre se convierte en piezas nativas (texto con degradado/contorno/sombra, giro, recortes y medias) y la edición en vivo solo recrea lo cambiado |
+| Plantilla → diseño libre | «Diseñar» sobre una plantilla la convierte (con confirmación y permitido por el motor en el mismo gráfico, deshacible de una vez); las piezas conservan posición y los textos quedan como campos `{x}` de modo que formulario, datos en vivo y asistente siguen funcionando | Prueba unitaria: cambio de tipo con `allowKindChange` y deshacer devuelve la plantilla exacta |
+| Historial | Cada gesto del lienzo es un paso de deshacer (al soltar); durante el arrastre se aplica una vista previa en directo con `PreviewGraphicCommand`, que no entra en el historial; textos vivos (reloj/cuenta atrás) se repintan cada 200 ms; un grafo puede editarse estando al aire | Prueba unitaria: la vista previa cambia proyecto y motor sin entrar en el historial y Ctrl+Z revierte el gesto completo de una vez |
+| Capas y propiedades | Lista de capas (arriba = delante) con ojo/candado por elemento, alinear (6 modos), distribuir, ordenar, duplicar y eliminar por menú y teclado (Supr, Ctrl+D, Ctrl+Z/Y, flechas para ajuste fino); panel de propiedades del elemento y de la presentación del gráfico (nombre, posición/escala en el lienzo, animaciones, salida automática, datos en vivo) | Mismo cauce de comandos validados del estudio (todo deshacible) |
+| Biblioteca de recursos | Imágenes y videos importados a `%APPDATA%\LiveStream\library` (el original puede borrarse), categorías, eliminar, abrir carpeta; disponible en Herramientas y como selector dentro del diseñador; importar y exportar `.lsgfx` (el paquete lleva los recursos incrustados) | Pruebas unitarias (validación de contenido, rutas fuera del archivo, nombres duplicados, recursos ausentes) |
+| Accesos en la UI principal | Botón «Editor de diseño libre» en el panel Gráficos, doble clic (diseñador en diseño libre, formulario en plantillas), menú contextual por fila (diseñar, formulario, convertir, exportar) e «Importar gráfico (.lsgfx)…» en el menú «+» | Compilación y pruebas en verde; queda por verificar el flujo completo a mano en la app con emisión activa |
+
 ## Limitaciones conocidas (reales, no simuladas)
 
 - **Paneles acoplables**: son redimensionables y se pueden restaurar, pero no se pueden arrastrar a otra posición ni
@@ -151,10 +193,11 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
   Tampoco hay *track matte* del stinger en el diálogo (libobs lo admite; falta la UI).
 - **Alertas de plataformas** (seguidores, suscripciones, donaciones): la plantilla de alerta existe y funciona, pero
   se lanza a mano o desde el archivo de datos; la conexión con YouTube/Twitch llega con la Fase 6.
-- **Cuenta atrás**: su estado (en marcha, tiempo restante) es de la sesión; al reabrir el proyecto vuelve a la duración.
-- **Editor de gráficos**: los gráficos se editan con formulario (campos, colores, posición numérica), no arrastrándolos
-  sobre el lienzo; las plantillas son las 8 del estudio (no hay editor de diseño libre ni línea de tiempo de keyframes
-  en la UI, aunque el motor sí la soporta).
+- **Cuenta atrás**: con duración, su estado (en marcha, tiempo restante) es de la sesión y al reabrir vuelve a la duración. Con «Hora de fin» (hh:mm) cuenta contra el reloj del sistema y sobrevive a reinicios; en ese modo iniciar/pausar no tienen efecto.
+- **Editor de gráficos (incompleto)**: existe ya el diseño libre con lienzo y capas (Fase 9), pero el formulario sigue
+  siendo la vía de edición de textos/colores de las piezas seleccionadas; no hay línea de tiempo de keyframes en la UI
+  (el motor sí soporta animación por keyframes) ni máscaras/degradados completos por elemento. Sin verificar aún a mano
+  con la ventana del diseñador en ejecución.
 - **Asistente sin probar contra la API real**: en este equipo no hay clave de Anthropic. El protocolo está verificado
   con respuestas grabadas y un servidor local, pero la calidad de las respuestas del modelo real no se ha medido
   (no hay conjunto de evaluación todavía). Cada mensaje consume tokens de la cuenta del usuario.
@@ -188,7 +231,7 @@ grabación, vista previa nativa en Avalonia. Detalles y fallos corregidos en el 
 
 ## Pendiente
 
-- Las fases 1–7 del plan están implementadas. Lo pendiente es lo indicado en las limitaciones: pruebas contra
+- Las fases 1-9 están implementadas (la 8 y la 9 sin publicar). Lo pendiente es lo indicado en las limitaciones: pruebas contra
   plataformas reales y la API de Claude con credenciales, relay SRS/MediaMTX, firma de código y la decisión de licencia.
 
 ## Cómo ejecutar y verificar

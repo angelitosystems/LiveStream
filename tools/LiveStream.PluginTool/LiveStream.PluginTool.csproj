@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Herramienta de quien publica: crear, validar, empaquetar, firmar y publicar plugins en el marketplace.
+       Las plantillas de `lsplugin new` van incrustadas para que la orden funcione igual con el SDK instalado. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lsplugin</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LiveStream.PluginSdk\LiveStream.PluginSdk.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Template\Project.csproj" LogicalName="Template.Project.csproj" />
+    <EmbeddedResource Include="Template\Program.cs" LogicalName="Template.Program.cs" />
+    <EmbeddedResource Include="Template\NuGet.config" LogicalName="Template.NuGet.config" />
+    <EmbeddedResource Include="Template\.gitignore" LogicalName="Template.gitignore" />
+    <EmbeddedResource Include="Template\README.md" LogicalName="Template.README.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Las plantillas son texto para `lsplugin new`, no código de esta herramienta. -->
+    <Compile Remove="Template\**" />
+  </ItemGroup>
+</Project>

@@ -19,6 +19,8 @@ public enum GraphicKind
     LiveBadge,
     /// <summary>Alerta de directo (título y mensaje) que se oculta sola.</summary>
     Alert,
+    /// <summary>Diseño libre: los elementos los define el usuario en el editor visual.</summary>
+    Custom,
 }
 
 /// <summary>Animación de entrada o salida de un gráfico.</summary>
@@ -72,7 +74,9 @@ public sealed record Graphic(
     /// <summary>Segundos en pantalla antes de salir solo; 0 = hasta que se retire a mano.</summary>
     double AutoHideSeconds = 0,
     /// <summary>Archivo JSON vigilado cuyos valores sustituyen a los campos (datos en vivo); null = sin enlace.</summary>
-    string? DataFile = null)
+    string? DataFile = null,
+    /// <summary>Elementos del diseño libre (solo <see cref="GraphicKind.Custom"/>).</summary>
+    IReadOnlyList<DesignElement>? Design = null)
 {
     public string Field(string key) => Fields.TryGetValue(key, out var value) ? value : "";
 
@@ -88,6 +92,10 @@ public sealed record Graphic(
             return "La duración de la animación debe estar entre 0 y 10000 ms.";
         if (AutoHideSeconds is < 0 or > 3600)
             return "La salida automática debe estar entre 0 y 3600 s.";
+        if (Kind == GraphicKind.Custom && GraphicDesignValidation.Validate(Design) is { } designError)
+            return designError;
+        if (Kind != GraphicKind.Custom && Design is not null)
+            return "Solo los diseños libres tienen elementos propios.";
         return Style.Validate();
     }
 }

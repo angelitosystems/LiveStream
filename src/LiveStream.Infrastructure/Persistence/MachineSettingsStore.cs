@@ -4,7 +4,11 @@ namespace LiveStream.Infrastructure.Persistence;
 
 /// <summary>Ajustes de este equipo (no del proyecto): dependen del hardware, no del estudio.</summary>
 /// <param name="UpdateFeedUrl">URL HTTPS del manifiesto firmado de actualizaciones (update.json); null = sin canal.</param>
-public sealed record MachineSettings(int RenderAdapterIndex = 0, bool AdaptiveBitrate = true, string? UpdateFeedUrl = null);
+/// <param name="PluginCatalogUrl">URL HTTPS del backend del marketplace; null = sin catálogo remoto.</param>
+/// <param name="PluginRepository">Carpeta con paquetes .lsplugin firmados (repositorio local); null = ninguno.</param>
+/// <param name="PluginDeveloperMode">Permite instalar plugins sin firma (solo para quien los desarrolla).</param>
+public sealed record MachineSettings(int RenderAdapterIndex = 0, bool AdaptiveBitrate = true, string? UpdateFeedUrl = null,
+    string? PluginCatalogUrl = null, string? PluginRepository = null, bool PluginDeveloperMode = false);
 
 /// <summary>%APPDATA%\LiveStream\machine.json. Un archivo dañado no impide arrancar: se usan los valores por defecto.</summary>
 public sealed class MachineSettingsStore(string? path = null)

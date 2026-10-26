@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- SDK oficial de plugins: contratos compartidos por la app, el CLI de publicación, el backend (Linux) y los plugins. -->
+  <PropertyGroup>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <PackageId>LiveStream.PluginSdk</PackageId>
+    <Description>SDK oficial para crear plugins de LiveStream (manifiesto, empaquetado, firma y protocolo JSON-RPC).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Multiplataforma: lo usa también el backend del marketplace en Linux. -->
+    <AssemblyAttribute Remove="System.Runtime.Versioning.SupportedOSPlatformAttribute" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LiveStream.UnitTests" />
+  </ItemGroup>
+</Project>

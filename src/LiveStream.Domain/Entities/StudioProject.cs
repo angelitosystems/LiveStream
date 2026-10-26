@@ -5,7 +5,7 @@ namespace LiveStream.Domain.Entities;
 /// <summary>Raíz del proyecto de estudio. Es la unidad que se persiste y versiona.</summary>
 public sealed class StudioProject
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     private readonly List<Scene> _scenes = [];
     private readonly List<Source> _sources = [];
@@ -89,14 +89,15 @@ public sealed class StudioProject
         _graphics.Insert(Math.Clamp(index ?? _graphics.Count, 0, _graphics.Count), graphic);
     }
 
-    /// <summary>Sustituye un gráfico por su versión editada (mismo Id y tipo).</summary>
-    public Graphic ReplaceGraphic(Graphic graphic)
+    /// <summary>Sustituye un gráfico por su versión editada (mismo Id). El cambio de tipo exige permiso
+    /// explícito: solo la conversión plantilla → diseño libre del editor lo usa.</summary>
+    public Graphic ReplaceGraphic(Graphic graphic, bool allowKindChange = false)
     {
         var index = IndexOfGraphic(graphic.Id);
         if (index < 0)
             throw new KeyNotFoundException($"Gráfico {graphic.Id} no encontrado.");
         var previous = _graphics[index];
-        if (previous.Kind != graphic.Kind)
+        if (previous.Kind != graphic.Kind && !allowKindChange)
             throw new InvalidOperationException("No se puede cambiar el tipo de un gráfico.");
         _graphics[index] = graphic;
         return previous;

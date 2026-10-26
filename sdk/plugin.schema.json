@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/angelitosystems/LiveStream/sdk/plugin.schema.json",
+  "title": "Manifiesto de plugin de LiveStream (plugin.json)",
+  "type": "object",
+  "required": ["id", "name", "version", "apiVersion", "entry"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?){1,9}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "version": { "type": "string", "pattern": "^[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}$" },
+    "apiVersion": { "const": 1 },
+    "entry": { "type": "string", "pattern": "\\.[eE][xX][eE]$" },
+    "author": { "type": "string" },
+    "description": { "type": "string", "maxLength": 2000 },
+    "category": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "homepage": { "type": "string" },
+    "minAppVersion": { "type": "string", "pattern": "^[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}$" },
+    "permissions": {
+      "type": "array",
+      "items": { "enum": ["studio.read", "studio.modify", "studio.live"] },
+      "uniqueItems": true
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}$" }
+    },
+    "settings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "label"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,39}$" },
+          "label": { "type": "string" },
+          "type": { "enum": ["string", "number", "bool"] },
+          "default": { "type": "string" }
+        }
+      }
+    },
+    "changelog": { "type": "string" }
+  }
+}

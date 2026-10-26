@@ -82,6 +82,12 @@ public sealed class GraphicsService : IAsyncDisposable
 
     public CountdownStatus GetCountdown(Guid graphicId)
     {
+        // Con hora de fin manda el reloj del sistema: sobrevive a reinicios y no necesita iniciar/pausar.
+        if (Context.Project.FindGraphic(graphicId) is { } g && GraphicTemplates.ParseEndsAt(g.Field("endsAt")) is { } endsAt)
+        {
+            var until = GraphicTemplates.UntilEndsAt(endsAt, DateTime.Now);
+            return new CountdownStatus(until > TimeSpan.Zero ? until : TimeSpan.Zero, until > TimeSpan.Zero);
+        }
         var state = CountdownFor(graphicId);
         lock (state)
             return new CountdownStatus(state.Remaining, state.Clock.IsRunning);
@@ -143,6 +149,11 @@ public sealed class GraphicsService : IAsyncDisposable
                 return remaining <= TimeSpan.Zero ? graphic.Field("finished") : GraphicTemplates.FormatRemaining(remaining);
             case GraphicKind.Clock when key == "time":
                 return DateTime.Now.ToString(GraphicTemplates.SafeFormat(graphic.Field("format")));
+            case GraphicKind.Custom when graphic.Design?.FirstOrDefault(e => e.Key == key) is { Binding: not DesignBinding.None } e:
+                if (e.Binding == DesignBinding.Clock)
+                    return DateTime.Now.ToString(GraphicTemplates.SafeFormat(e.Text));
+                var left = GetCountdown(graphic.Id).Remaining;
+                return left <= TimeSpan.Zero ? graphic.Field("finished") : GraphicTemplates.FormatRemaining(left);
             default:
                 return null;
         }
@@ -150,14 +161,15 @@ public sealed class GraphicsService : IAsyncDisposable
 
     private async Task PushLiveTextAsync(Graphic graphic, bool force, CancellationToken ct)
     {
-        if (graphic.Kind is not (GraphicKind.Countdown or GraphicKind.Clock))
-            return;
-        var text = LiveText(graphic, "time") ?? "";
-        var key = (graphic.Id, "time");
-        if (!force && _pushedText.TryGetValue(key, out var last) && last == text)
-            return;
-        await GraphicLayer.UpdateTextAsync(Context.Engine, Context.Project, graphic, "time", text, ct).ConfigureAwait(false);
-        _pushedText[key] = text;
+        foreach (var piece in GraphicTemplates.LiveKeys(graphic))
+        {
+            var text = LiveText(graphic, piece) ?? "";
+            var key = (graphic.Id, piece);
+            if (!force && _pushedText.TryGetValue(key, out var last) && last == text)
+                continue;
+            await GraphicLayer.UpdateTextAsync(Context.Engine, Context.Project, graphic, piece, text, ct).ConfigureAwait(false);
+            _pushedText[key] = text;
+        }
     }
 
     // ---- Bucle --------------------------------------------------------------------------------
@@ -174,7 +186,7 @@ public sealed class GraphicsService : IAsyncDisposable
                 foreach (var graphic in Snapshot())
                 {
                     await PushLiveTextAsync(graphic, force: false, ct).ConfigureAwait(false);
-                    if (graphic.Kind == GraphicKind.Countdown)
+                    if (GraphicTemplates.HasCountdown(graphic))
                         StopFinishedCountdown(graphic.Id);
                 }
                 foreach (var (id, deadline) in _onAir)

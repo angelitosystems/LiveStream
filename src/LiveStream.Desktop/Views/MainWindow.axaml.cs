@@ -139,13 +139,76 @@ public sealed partial class MainWindow : Window
             Vm.StatusMessage = "Selecciona un gráfico para editarlo.";
     });
 
-    private void OnGraphicDoubleTapped(object? sender, TappedEventArgs e)
+    /// <summary>Abre el editor de diseño libre; las plantillas se convierten primero (con confirmación).</summary>
+    private async void OnDesignGraphic(object? sender, RoutedEventArgs e) => await Guard("Diseño", async () =>
+    {
+        if (Vm.SelectedGraphic is not { } row)
+        {
+            Vm.StatusMessage = "Selecciona un gráfico para diseñarlo.";
+            return;
+        }
+        await OpenDesignerAsync(row.Id);
+    });
+
+    /// <summary>Doble clic: diseñador para los diseños libres y formulario para las plantillas.</summary>
+    private async void OnGraphicDoubleTapped(object? sender, TappedEventArgs e)
     {
         // Doble clic sobre AIRE o los controles de la fila no abre el editor.
-        if (e.Source is Visual v && v.FindAncestorOfType<Avalonia.Controls.Primitives.ToggleButton>(includeSelf: true) is null &&
-            v.FindAncestorOfType<Button>(includeSelf: true) is null)
-            OnEditGraphic(sender, e);
+        if (e.Source is not Visual v || v.FindAncestorOfType<Avalonia.Controls.Primitives.ToggleButton>(includeSelf: true) is not null ||
+            v.FindAncestorOfType<Button>(includeSelf: true) is not null)
+            return;
+        if (Vm.SelectedGraphic is not { } row)
+            return;
+        if (row.Kind == Domain.Graphics.GraphicKind.Custom)
+            await Guard("Diseño", () => GraphicDesignerDialog.ShowAsync(Vm, row.Id));
+        else
+            await Guard("Gráfico", () => ProductionDialogs.ShowGraphicEditorAsync(Vm, row.Id));
     }
+
+    private async Task OpenDesignerAsync(Guid graphicId)
+    {
+        if (Vm.Project.FindGraphic(graphicId) is not { } graphic)
+            return;
+        if (graphic.Kind != Domain.Graphics.GraphicKind.Custom)
+        {
+            if (!await Vm.Dialogs.ConfirmAsync("Convertir en diseño libre",
+                    $"«{graphic.Name}» usa la plantilla «{Application.Graphics.GraphicTemplates.DisplayName(graphic.Kind)}». " +
+                    "Convertirlo en diseño libre permite editarlo pieza por pieza en el lienzo; el tipo pasa a ser «Diseño libre» (deshacer con Ctrl+Z). ¿Continuar?",
+                    "Diseñar"))
+                return;
+            if (!await Vm.ConvertToDesignAsync(graphicId))
+                return;
+        }
+        await GraphicDesignerDialog.ShowAsync(Vm, graphicId);
+    }
+
+    private async void OnConvertGraphic(object? sender, RoutedEventArgs e) => await Guard("Convertir en diseño libre", async () =>
+    {
+        if (Vm.SelectedGraphic is not { } row)
+        {
+            Vm.StatusMessage = "Selecciona un gráfico para convertirlo.";
+            return;
+        }
+        if (!await Vm.Dialogs.ConfirmAsync("Convertir en diseño libre",
+                "Las piezas de la plantilla pasan a ser elementos del editor de diseño libre; el tipo pasa a ser «Diseño libre» (deshacer con Ctrl+Z). ¿Continuar?",
+                "Convertir"))
+            return;
+        if (await Vm.ConvertToDesignAsync(row.Id))
+            Vm.StatusMessage = "Gráfico convertido en diseño libre.";
+    });
+
+    private async void OnExportGraphic(object? sender, RoutedEventArgs e)
+    {
+        if (Vm.SelectedGraphic is { } row)
+            await Guard("Exportar gráfico", () => Vm.ExportGraphicAsync(row.Id));
+    }
+
+    private async void OnResourceLibrary(object? sender, RoutedEventArgs e) =>
+        await Guard("Biblioteca de recursos", () => ResourceLibraryDialog.ShowBrowserAsync(Vm));
+
+    private async void OnMarketplace(object? sender, RoutedEventArgs e) => await Guard("Marketplace", () => MarketplaceDialog.ShowAsync(Vm));
+
+    private async void OnBrandKit(object? sender, RoutedEventArgs e) => await Guard("Kit de marca", () => ProductionDialogs.ShowBrandKitAsync(Vm));
 
     private async void OnAddGraphicFromTemplate(object? sender, RoutedEventArgs e) =>
         await Guard("Plantillas", () => ProductionDialogs.ShowTemplatePickerAsync(Vm));

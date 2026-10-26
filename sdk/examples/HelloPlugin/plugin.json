@@ -1,0 +1,17 @@
+{
+  "id": "com.angelitosystems.hello",
+  "name": "Hola LiveStream (ejemplo)",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "entry": "HelloPlugin.exe",
+  "author": "Angelito Systems S.A.C.",
+  "description": "Plugin de ejemplo del SDK: saluda al iniciar y registra cuántas escenas hay cada vez que cambia el estudio.",
+  "category": "Ejemplos",
+  "tags": ["ejemplo", "sdk"],
+  "minAppVersion": "0.9.0",
+  "permissions": ["studio.read"],
+  "settings": [
+    { "key": "greeting", "label": "Saludo", "type": "string", "default": "Hola" }
+  ],
+  "changelog": "1.0.0: primera versión."
+}

@@ -107,10 +107,12 @@ public sealed partial class GraphicRowViewModel(Guid id, Domain.Graphics.Graphic
     [ObservableProperty] private bool _countdownRunning;
 
     public string KindLabel => Application.Graphics.GraphicTemplates.DisplayName(Kind);
-    public bool IsCountdown => Kind == Domain.Graphics.GraphicKind.Countdown;
+    /// <summary>Tiene cuenta atrás (la plantilla o un diseño libre con un texto de cuenta atrás).</summary>
+    [ObservableProperty] private bool _isCountdown = kind == Domain.Graphics.GraphicKind.Countdown;
     public bool IsScoreboard => Kind == Domain.Graphics.GraphicKind.Scoreboard;
 
     public override string ToString() => $"{Name}{(OnAir ? ", al aire" : "")}";
 }
 
-public sealed record GraphicKindOption(Domain.Graphics.GraphicKind Kind, string Label);
+/// <summary>Opción del menú de gráficos: una plantilla o la entrada de importación (Kind null → importar .lsgfx).</summary>
+public sealed record GraphicKindOption(Domain.Graphics.GraphicKind? Kind, string Label);

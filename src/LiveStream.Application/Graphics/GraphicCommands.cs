@@ -86,7 +86,7 @@ public sealed class RemoveGraphicCommand(Guid graphicId) : IReversibleStudioComm
 /// Sustituye un gráfico por su versión editada y la aplica en vivo (aunque esté al aire).
 /// previous permite deshacer cambios que la UI ya aplicó como vista previa.
 /// </summary>
-public sealed class UpdateGraphicCommand(Graphic updated, Graphic? previous = null) : IReversibleStudioCommand
+public sealed class UpdateGraphicCommand(Graphic updated, Graphic? previous = null, bool allowKindChange = false) : IReversibleStudioCommand
 {
     private Graphic? _previous = previous;
 
@@ -96,24 +96,46 @@ public sealed class UpdateGraphicCommand(Graphic updated, Graphic? previous = nu
     {
         if (context.Project.FindGraphic(updated.Id) is not { } current)
             return "El gráfico no existe.";
-        return current.Kind != updated.Kind ? "No se puede cambiar el tipo de un gráfico." : GraphicValidation.Validate(context, updated, isNew: false);
+        return current.Kind != updated.Kind && !allowKindChange
+            ? "No se puede cambiar el tipo de un gráfico."
+            : GraphicValidation.Validate(context, updated, isNew: false);
     }
 
     public async Task ExecuteAsync(StudioContext context, CancellationToken ct)
     {
-        var replaced = context.Project.ReplaceGraphic(updated);
+        var replaced = context.Project.ReplaceGraphic(updated, allowKindChange);
         _previous ??= replaced;
         if (context.Engine.IsInitialized)
-            await GraphicLayer.UpdateAsync(context.Engine, context.Project, updated, context.GraphicText, ct).ConfigureAwait(false);
+            await GraphicLayer.UpdateAsync(context.Engine, context.Project, updated, context.GraphicText, ct, previous: replaced).ConfigureAwait(false);
     }
 
     public async Task UndoAsync(StudioContext context, CancellationToken ct)
     {
         if (_previous is null)
             return;
-        context.Project.ReplaceGraphic(_previous);
+        var current = context.Project.ReplaceGraphic(_previous, allowKindChange);
         if (context.Engine.IsInitialized)
-            await GraphicLayer.UpdateAsync(context.Engine, context.Project, _previous, context.GraphicText, ct).ConfigureAwait(false);
+            await GraphicLayer.UpdateAsync(context.Engine, context.Project, _previous, context.GraphicText, ct, previous: current).ConfigureAwait(false);
+    }
+}
+
+/// <summary>
+/// Vista previa del editor de diseño durante un arrastre: aplica el gráfico al proyecto y al motor en directo,
+/// pero no entra en el historial de deshacer. El gesto se cierra con <see cref="UpdateGraphicCommand"/>, que
+/// recuerda el estado previo al gesto y deshace todo de una vez.
+/// </summary>
+public sealed class PreviewGraphicCommand(Graphic updated) : IStudioCommand
+{
+    public string Description => $"Vista previa del gráfico '{updated.Name}'";
+
+    public string? Validate(StudioContext context) => GraphicValidation.Validate(context, updated, isNew: false);
+
+    public async Task ExecuteAsync(StudioContext context, CancellationToken ct)
+    {
+        var replaced = context.Project.ReplaceGraphic(updated);
+        if (context.Engine.IsInitialized)
+            await GraphicLayer.UpdateAsync(context.Engine, context.Project, updated, context.GraphicText, ct,
+                previous: replaced).ConfigureAwait(false);
     }
 }
 
@@ -158,25 +180,56 @@ public sealed class ApplyGraphicDataCommand(Guid graphicId, IReadOnlyDictionary<
     {
         if (context.Project.FindGraphic(graphicId) is not { } graphic)
             return "El gráfico no existe.";
-        var known = GraphicTemplates.Fields(graphic.Kind).Select(f => f.Key).ToHashSet();
+        var known = GraphicTemplates.FieldsOf(graphic).Select(f => f.Key).ToHashSet();
         return values.Keys.Any(known.Contains) ? GraphicTemplates.ValidateFields(Merge(graphic)) : "Los datos no contienen ningún campo del gráfico.";
     }
 
     public async Task ExecuteAsync(StudioContext context, CancellationToken ct)
     {
         var merged = Merge(context.Project.GetGraphic(graphicId));
-        context.Project.ReplaceGraphic(merged);
+        var current = context.Project.ReplaceGraphic(merged);
         if (context.Engine.IsInitialized)
-            await GraphicLayer.UpdateAsync(context.Engine, context.Project, merged, context.GraphicText, ct).ConfigureAwait(false);
+            await GraphicLayer.UpdateAsync(context.Engine, context.Project, merged, context.GraphicText, ct, previous: current).ConfigureAwait(false);
     }
 
     private Graphic Merge(Graphic graphic)
     {
-        var known = GraphicTemplates.Fields(graphic.Kind).Select(f => f.Key).ToHashSet();
+        var known = GraphicTemplates.FieldsOf(graphic).Select(f => f.Key).ToHashSet();
         var fields = new Dictionary<string, string>(graphic.Fields);
         foreach (var (key, value) in values)
             if (known.Contains(key))
                 fields[key] = value;
         return graphic with { Fields = fields };
+    }
+}
+
+/// <summary>Aplica el kit de marca a todos los gráficos del proyecto en un solo paso que se deshace de una vez.</summary>
+public sealed class ApplyBrandCommand(BrandKit brand) : IReversibleStudioCommand
+{
+    private IReadOnlyList<Graphic>? _previous;
+
+    public string Description => $"Aplicar la marca '{brand.Name}'";
+
+    public string? Validate(StudioContext context) =>
+        brand.Validate() ?? (context.Project.Graphics.Count == 0 ? "No hay gráficos a los que aplicar la marca." : null);
+
+    public async Task ExecuteAsync(StudioContext context, CancellationToken ct)
+    {
+        _previous ??= context.Project.Graphics.ToList();
+        foreach (var graphic in _previous)
+            await ReplaceAsync(context, brand.ApplyTo(graphic), ct).ConfigureAwait(false);
+    }
+
+    public async Task UndoAsync(StudioContext context, CancellationToken ct)
+    {
+        foreach (var graphic in _previous ?? [])
+            await ReplaceAsync(context, graphic, ct).ConfigureAwait(false);
+    }
+
+    private static async Task ReplaceAsync(StudioContext context, Graphic graphic, CancellationToken ct)
+    {
+        var current = context.Project.ReplaceGraphic(graphic);
+        if (context.Engine.IsInitialized)
+            await GraphicLayer.UpdateAsync(context.Engine, context.Project, graphic, context.GraphicText, ct, previous: current).ConfigureAwait(false);
     }
 }

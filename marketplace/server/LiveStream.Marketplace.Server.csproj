@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Backend del marketplace (Linux, contenedor para Coolify). Sin dependencias externas: solo el framework. -->
+  <PropertyGroup>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyAttribute Remove="System.Runtime.Versioning.SupportedOSPlatformAttribute" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LiveStream.PluginSdk\LiveStream.PluginSdk.csproj" />
+  </ItemGroup>
+</Project>

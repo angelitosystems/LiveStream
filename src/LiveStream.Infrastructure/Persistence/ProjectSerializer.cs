@@ -69,7 +69,7 @@ public static class ProjectSerializer
         p.Scenes.Select(sc => new SceneDto(sc.Id, sc.Name,
             sc.Items.Select(i => new ItemDto(i.Id, i.SourceId, i.Transform, i.Visible, i.Locked)).ToList(), sc.TransitionOverride)).ToList(),
         p.Graphics.Count == 0 ? null : p.Graphics.Select(g => new GraphicDto(g.Id, g.Name, g.Kind, new Dictionary<string, string>(g.Fields),
-            g.Style, g.X, g.Y, g.Scale, g.AnimationIn, g.AnimationOut, g.AnimationMs, g.AutoHideSeconds, g.DataFile)).ToList(),
+            g.Style, g.X, g.Y, g.Scale, g.AnimationIn, g.AnimationOut, g.AnimationMs, g.AutoHideSeconds, g.DataFile, g.Design?.ToList())).ToList(),
         p.Destinations.Select(d => new DestinationDto(d.Id, d.Name, d.Platform, d.Server, d.CredentialName, d.Enabled, d.Encoder)).ToList());
 
     private static JsonElement Json(string json) => JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json).RootElement.Clone();
@@ -120,7 +120,7 @@ public static class ProjectSerializer
         foreach (var g in dto.Graphics ?? [])
         {
             var graphic = new Graphic(g.Id, g.Name, g.Kind, g.Fields ?? [], g.Style ?? new GraphicStyle(), g.X, g.Y, g.Scale,
-                g.AnimationIn, g.AnimationOut, g.AnimationMs, g.AutoHideSeconds, g.DataFile);
+                g.AnimationIn, g.AnimationOut, g.AnimationMs, g.AutoHideSeconds, g.DataFile, g.Design);
             // Un gráfico inválido (archivo editado a mano) se descarta en vez de impedir abrir el proyecto.
             if (graphic.Validate() is null && project.FindGraphic(graphic.Id) is null)
                 project.InsertGraphic(graphic);
@@ -167,7 +167,7 @@ public static class ProjectSerializer
 
     private sealed record GraphicDto(Guid Id, string Name, GraphicKind Kind, Dictionary<string, string>? Fields, GraphicStyle? Style,
         double X, double Y, double Scale, GraphicAnimation AnimationIn, GraphicAnimation AnimationOut, int AnimationMs,
-        double AutoHideSeconds, string? DataFile);
+        double AutoHideSeconds, string? DataFile, List<DesignElement>? Design = null);
 
     private sealed record ItemDto(Guid Id, Guid SourceId, Transform Transform, bool Visible, bool Locked);
 }

@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+graphify-out/
+artifacts/
+native/
+tests/
+.git/

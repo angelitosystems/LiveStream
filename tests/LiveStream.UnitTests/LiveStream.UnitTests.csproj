@@ -11,6 +11,8 @@
     <ProjectReference Include="..\..\src\LiveStream.Application\LiveStream.Application.csproj" />
     <ProjectReference Include="..\..\src\LiveStream.Native\LiveStream.Native.csproj" />
     <ProjectReference Include="..\..\src\LiveStream.Infrastructure\LiveStream.Infrastructure.csproj" />
+    <!-- Solo para compilarlo antes: las pruebas de plugins lo ejecutan como proceso real. -->
+    <ProjectReference Include="..\..\sdk\examples\HelloPlugin\HelloPlugin.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

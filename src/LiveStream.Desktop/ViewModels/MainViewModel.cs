@@ -18,6 +18,9 @@ using LiveStream.Domain.Entities;
 using LiveStream.Domain.Graphics;
 using LiveStream.Domain.ValueObjects;
 using LiveStream.Infrastructure.Persistence;
+using LiveStream.Infrastructure.Plugins;
+using LiveStream.Infrastructure.Updates;
+using LiveStream.PluginSdk;
 using LiveStream.Native.Engine;
 
 namespace LiveStream.Desktop.ViewModels;
@@ -46,7 +49,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         Machine = new MachineSettingsStore();
         Optimizer = new PerformanceOptimizer(session) { AdaptiveEnabled = Machine.Load().AdaptiveBitrate };
         Assistant = new AssistantViewModel(this, secrets);
+        Plugins = new PluginManager(
+            new PluginStore(UpdateClient.CurrentVersion, PluginTrust.EmbeddedPublicKey()) { DeveloperMode = Machine.Load().PluginDeveloperMode },
+            plugin => new AssistantToolbox(Session, this, c => Dispatcher.UIThread.InvokeAsync(() => Dialogs.ConfirmAsync(
+                $"{plugin.Manifest.Name}: {c.Title}", $"El plugin «{plugin.Manifest.Name}» pide: {c.Message}", c.ConfirmText, destructive: true)),
+                Optimizer.Report, Brand.Load));
         Executor.StateChanged += (_, _) => Dispatcher.UIThread.Post(Refresh);
+        Executor.StateChanged += (_, _) => PublishStudioChanged();
         Session.AutosaveFailed += (_, ex) => Dispatcher.UIThread.Post(() => StatusMessage = $"No se pudo guardar: {ex.Message}");
         Session.Saved += (_, _) => Dispatcher.UIThread.Post(() => LastSaved = DateTime.Now.ToString("HH:mm:ss"));
         Session.Graphics.Changed += (_, _) => Dispatcher.UIThread.Post(RefreshGraphicsLive);
@@ -64,6 +73,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
     /// <summary>Panel del asistente de IA.</summary>
     public AssistantViewModel Assistant { get; }
 
+    /// <summary>Plugins instalados (cada uno en su propio proceso).</summary>
+    public PluginManager Plugins { get; }
+
+    private int _pluginEventPending;
+
+    /// <summary>Agrupa ráfagas de cambios (p. ej. al arrastrar) en un solo evento cada 250 ms.</summary>
+    private void PublishStudioChanged()
+    {
+        if (Interlocked.Exchange(ref _pluginEventPending, 1) == 1)
+            return;
+        _ = Task.Delay(250).ContinueWith(_ =>
+        {
+            Volatile.Write(ref _pluginEventPending, 0);
+            Plugins.Publish(PluginProtocol.StudioChangedEvent);
+        }, TaskScheduler.Default);
+    }
+
     /// <summary>Optimizador en directo (bitrate adaptativo, avisos de sobrecarga, auditoría).</summary>
     public PerformanceOptimizer Optimizer { get; }
 
@@ -78,8 +104,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
     public IReadOnlyList<KeyValuePair<string, string>> Transitions { get; } = SetTransitionCommand.Available.ToList();
     public ObservableCollection<GraphicRowViewModel> Graphics { get; } = [];
     public IReadOnlyList<GraphicKindOption> GraphicKinds { get; } =
-        GraphicTemplates.Kinds.Select(k => new GraphicKindOption(k, GraphicTemplates.DisplayName(k))).ToList();
+        GraphicTemplates.Kinds.Select(k => new GraphicKindOption(k, GraphicTemplates.DisplayName(k)))
+            .Append(new GraphicKindOption(null, "Importar gráfico (.lsgfx)…"))
+            .ToList();
     public IGraphicTemplateLibrary Templates { get; } = new GraphicTemplateLibrary();
+    public BrandKitStore Brand { get; } = new();
+
+    /// <summary>Imágenes y videos compartidos entre proyectos (%APPDATA%\LiveStream\library).</summary>
+    public ResourceLibrary Library { get; } = new();
 
     /// <summary>Se eligió una transición que necesita ajustes (p. ej. el video del stinger) antes de aplicarse.</summary>
     public event EventHandler<string>? TransitionNeedsSettings;
@@ -154,6 +186,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
             }
             EngineReady = true;
             StatusMessage = "Motor listo.";
+            _ = Plugins.StartEnabledAsync(CancellationToken.None);
             _metricsTimer.Start();
             _meterTimer.Start();
             Refresh();
@@ -557,9 +590,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
             if (Project.FindGraphic(row.Id) is not { } g)
                 continue;
             row.OnAir = Session.Graphics.IsOnAir(row.Id);
+            row.IsCountdown = GraphicTemplates.HasCountdown(g);
             switch (g.Kind)
             {
-                case GraphicKind.Countdown:
+                case var _ when row.IsCountdown:
                     var status = Session.Graphics.GetCountdown(row.Id);
                     row.CountdownRunning = status.Running;
                     row.Detail = GraphicTemplates.FormatRemaining(status.Remaining) + (status.Running ? " ▶" : "");
@@ -584,9 +618,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
     }
 
     [RelayCommand]
-    private async Task AddGraphic(GraphicKind kind)
+    private async Task AddGraphic(GraphicKind? kind)
     {
-        var graphic = GraphicTemplates.Create(kind, NextGraphicName(GraphicTemplates.DisplayName(kind)), Project.Canvas);
+        if (kind is null)
+        {
+            await ImportGraphic();
+            return;
+        }
+        var graphic = GraphicTemplates.Create(kind.Value, NextGraphicName(GraphicTemplates.DisplayName(kind.Value)), Project.Canvas, brand: Brand.Load());
         if ((await Run(new AddGraphicCommand(graphic))).Success)
             SelectGraphic(graphic.Id);
     }
@@ -690,6 +729,71 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         var current = int.TryParse(g.Field(key), out var n) ? n : 0;
         var fields = new Dictionary<string, string>(g.Fields) { [key] = (current + 1).ToString() };
         return Run(new UpdateGraphicCommand(g with { Fields = fields }));
+    }
+
+    // ---- Diseño libre del editor visual --------------------------------------------------------
+
+    /// <summary>
+    /// Convierte una plantilla en diseño libre para el editor: las piezas pasan a ser elementos editables y los
+    /// textos que mostraban un campo siguen como marcadores {campo}. Se deshace de una vez con Ctrl+Z.
+    /// </summary>
+    public async Task<bool> ConvertToDesignAsync(Guid graphicId)
+    {
+        if (Project.FindGraphic(graphicId) is not { } graphic)
+            return false;
+        if (graphic.Kind == GraphicKind.Custom)
+            return true;
+        if (Session.Graphics.IsOnAir(graphicId))
+        {
+            StatusMessage = "Retira el gráfico del aire antes de convertirlo en diseño libre.";
+            return false;
+        }
+        // FromTemplate crea una copia con id nueva: la conversión se aplica al mismo gráfico.
+        var converted = DesignOps.FromTemplate(graphic, Project.Canvas, graphic.Name) with { Id = graphic.Id };
+        var result = await Run(new UpdateGraphicCommand(converted, allowKindChange: true));
+        if (!result.Success)
+            StatusMessage = result.Error;
+        return result.Success;
+    }
+
+    [RelayCommand]
+    private async Task ImportGraphic()
+    {
+        var path = await Dialogs.PickFileAsync("Importar gráfico", GraphicPackage.FileFilter);
+        if (path is null)
+            return;
+        try
+        {
+            var imported = GraphicPackage.Import(path, Library);
+            imported = imported with { Name = NextGraphicName(imported.Name) };
+            if ((await Run(new AddGraphicCommand(imported))).Success)
+                SelectGraphic(imported.Id);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException or IOException
+                or NotSupportedException or UnauthorizedAccessException)
+        {
+            await Dialogs.InfoAsync("Importar gráfico", ex.Message);
+        }
+    }
+
+    /// <summary>Exporta un gráfico con sus recursos a un archivo .lsgfx, para usarlo en otro equipo o proyecto.</summary>
+    public async Task ExportGraphicAsync(Guid graphicId)
+    {
+        if (Project.FindGraphic(graphicId) is not { } graphic)
+            return;
+        var path = await Dialogs.SaveFileAsync("Exportar gráfico", graphic.Name, GraphicPackage.Extension.TrimStart('.'));
+        if (path is null)
+            return;
+        try
+        {
+            GraphicPackage.Export(graphic, path);
+            StatusMessage = "Gráfico exportado: " + path;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException or IOException
+                or UnauthorizedAccessException)
+        {
+            await Dialogs.InfoAsync("Exportar gráfico", ex.Message);
+        }
     }
 
     // ---- Mezclador ------------------------------------------------------------------------------
@@ -974,6 +1078,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         Assistant.Cancel();
         _metricsTimer.Stop();
         _meterTimer.Stop();
+        await Plugins.DisposeAsync();
         await Session.DisposeAsync();
     }
 }

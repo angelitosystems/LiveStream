@@ -5,5 +5,10 @@ obj/
 native/**/build/
 third_party/
 artifacts/
+graphify-out/
+.env.secrets
 *.mkv
 *.mp4
+
+# Mapa local de checkout separados (SDK y marketplace viven en sus propios repos).
+folders.json

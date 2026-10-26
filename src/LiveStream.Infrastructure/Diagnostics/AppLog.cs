@@ -12,6 +12,7 @@ public static partial class AppLog
 {
     private static readonly BlockingCollection<string> Queue = new(10_000);
     private static readonly Thread Writer;
+    private static int _pending;
 
     public static string Directory { get; } =
         System.IO.Directory.CreateDirectory(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LiveStream", "logs")).FullName;
@@ -28,19 +29,29 @@ public static partial class AppLog
     public static void Info(string category, string message) => Write("INFO", category, message);
     public static void Warn(string category, string message) => Write("WARN", category, message);
     public static void Error(string category, string message, Exception? ex = null) =>
-        Write("ERROR", category, ex is null ? message : $"{message} | {ex.GetType().Name}: {ex.Message}");
+        Write("ERROR", category, ex is null ? message : $"{message} | {ex}");
+
+    /// <summary>Error previo a la muerte del proceso: espera a que llegue al disco, porque al volver el runtime lo termina.</summary>
+    public static void Fatal(string category, string message, Exception? ex)
+    {
+        Error(category, message, ex);
+        Flush(TimeSpan.FromSeconds(2));
+    }
 
     public static void Write(string level, string category, string message)
     {
         var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {level,-5} [{category}] {Redact(message).ReplaceLineEndings(" ⏎ ")}";
-        Queue.TryAdd(line);
+        Interlocked.Increment(ref _pending);
+        if (!Queue.TryAdd(line))
+            Interlocked.Decrement(ref _pending);
     }
 
     /// <summary>Espera a que se escriba lo pendiente (al cerrar).</summary>
     public static void Flush(TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
-        while (Queue.Count > 0 && DateTime.UtcNow < deadline)
+        // _pending, no Queue.Count: la última línea ya salió de la cola pero puede no estar escrita aún.
+        while (Volatile.Read(ref _pending) > 0 && DateTime.UtcNow < deadline)
             Thread.Sleep(10);
     }
 
@@ -61,6 +72,10 @@ public static partial class AppLog
             catch (IOException)
             {
                 // El registro nunca debe tumbar la aplicación.
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _pending);
             }
         }
     }

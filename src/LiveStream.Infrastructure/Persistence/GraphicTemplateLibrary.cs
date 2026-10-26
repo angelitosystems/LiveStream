@@ -12,7 +12,8 @@ namespace LiveStream.Infrastructure.Persistence;
 public sealed class GraphicTemplateLibrary : IGraphicTemplateLibrary
 {
     public const string Extension = ".spgfx";
-    private const int FormatVersion = 1;
+    /// <summary>2 = diseño libre (con elementos); las versiones antiguas de la app lo rechazan en vez de abrirlo mal.</summary>
+    private const int FormatVersion = 2;
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -53,7 +54,7 @@ public sealed class GraphicTemplateLibrary : IGraphicTemplateLibrary
             throw new ArgumentException(error, nameof(graphic));
         var path = PathFor(name);
         var temp = path + ".tmp";
-        var dto = new TemplateDto(FormatVersion, name.Trim(), graphic with { DataFile = null });
+        var dto = new TemplateDto(graphic.Kind == GraphicKind.Custom ? FormatVersion : 1, name.Trim(), graphic with { DataFile = null });
         await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(dto, Options), ct).ConfigureAwait(false);
         File.Move(temp, path, overwrite: true);
     }

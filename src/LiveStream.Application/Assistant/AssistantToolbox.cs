@@ -91,12 +91,14 @@ public sealed class AssistantToolbox
     };
 
     private readonly Func<string>? _performanceReport;
+    private readonly Func<BrandKit>? _brand;
 
     /// <param name="performanceReport">Informe del optimizador (Fase 5); null si no hay optimizador.</param>
     public AssistantToolbox(StudioSession session, IOutputController outputs, Func<AssistantConfirmation, Task<bool>> confirm,
-        Func<string>? performanceReport = null)
+        Func<string>? performanceReport = null, Func<BrandKit>? brand = null)
     {
         _performanceReport = performanceReport;
+        _brand = brand;
         _session = session;
         _outputs = outputs;
         _confirm = confirm;
@@ -323,7 +325,7 @@ public sealed class AssistantToolbox
 
         // Gráficos
         Add("create_graphic",
-            "Crea un gráfico de TV en la capa superpuesta (queda oculto hasta show_graphic). Campos por tipo: lower_third(name,title), headline(label,headline), ticker(label,items con una noticia por línea,speed), countdown(label,duration mm:ss,finished), clock(format), scoreboard(home,away,homeScore,awayScore,period,clock), live_badge(text), alert(title,message).",
+            "Crea un gráfico de TV en la capa superpuesta (queda oculto hasta show_graphic). Campos por tipo: lower_third(name,title), headline(label,headline), ticker(label,items con una noticia por línea,speed), countdown(label,duration mm:ss,finished,endsAt hh:mm opcional que sustituye a duration), clock(format), scoreboard(home,away,homeScore,awayScore,period,clock), live_badge(text), alert(title,message).",
             Object(
                 ("kind", Str("Tipo de gráfico.", GraphicKinds.Keys), true),
                 ("name", Str("Nombre del gráfico en el panel.", maxLength: 80), false),
@@ -335,7 +337,7 @@ public sealed class AssistantToolbox
             {
                 var graphic = FindGraphic(a.Str("graphic"));
                 var fields = new Dictionary<string, string>(graphic.Fields);
-                foreach (var (key, value) in ReadFields(a, graphic.Kind))
+                foreach (var (key, value) in ReadFields(a, graphic))
                     fields[key] = value;
                 await Run(new UpdateGraphicCommand(graphic with { Fields = fields }), ct);
                 return Ok($"Gráfico «{graphic.Name}» actualizado: {Describe(fields)}.", $"Actualizó el gráfico «{graphic.Name}»");
@@ -372,7 +374,7 @@ public sealed class AssistantToolbox
             (a, _) =>
             {
                 var graphic = FindGraphic(a.Str("graphic"));
-                if (graphic.Kind != GraphicKind.Countdown)
+                if (!GraphicTemplates.HasCountdown(graphic))
                     throw new ToolException($"«{graphic.Name}» no es una cuenta atrás.");
                 switch (a.Str("action"))
                 {
@@ -596,7 +598,7 @@ public sealed class AssistantToolbox
         var name = a.OptStr("name") ?? GraphicTemplates.DisplayName(kind);
         if (Project.HasGraphicNamed(name))
             name = Enumerable.Range(2, 100).Select(i => $"{name} {i}").First(n => !Project.HasGraphicNamed(n));
-        var graphic = GraphicTemplates.Create(kind, name, Project.Canvas);
+        var graphic = GraphicTemplates.Create(kind, name, Project.Canvas, brand: _brand?.Invoke());
         var fields = new Dictionary<string, string>(graphic.Fields);
         foreach (var (key, value) in ReadFields(a, kind))
             fields[key] = value;
@@ -718,11 +720,16 @@ public sealed class AssistantToolbox
             : $"No encuentro {what} «{reference}». Opciones: {options}.");
     }
 
-    private static IEnumerable<(string Key, string Value)> ReadFields(JsonElement a, GraphicKind kind)
+    private static IEnumerable<(string Key, string Value)> ReadFields(JsonElement a, GraphicKind kind) =>
+        ReadFields(a, GraphicTemplates.Fields(kind).Select(f => f.Key).ToList());
+
+    private static IEnumerable<(string Key, string Value)> ReadFields(JsonElement a, Graphic graphic) =>
+        ReadFields(a, GraphicTemplates.FieldsOf(graphic).Select(f => f.Key).ToList());
+
+    private static IEnumerable<(string Key, string Value)> ReadFields(JsonElement a, List<string> known)
     {
         if (!a.TryGetProperty("fields", out var fields) || fields.ValueKind != JsonValueKind.Array)
             yield break;
-        var known = GraphicTemplates.Fields(kind).Select(f => f.Key).ToList();
         foreach (var field in fields.EnumerateArray())
         {
             var key = field.GetProperty("key").GetString()!;

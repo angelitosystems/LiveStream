@@ -10,6 +10,7 @@ using LiveStream.Desktop.Components;
 using LiveStream.Desktop.ViewModels;
 using LiveStream.Domain.Entities;
 using LiveStream.Domain.Graphics;
+using LiveStream.Infrastructure.Persistence;
 using static LiveStream.Desktop.Views.Dialogs.StudioDialogs;
 
 namespace LiveStream.Desktop.Views.Dialogs;
@@ -75,13 +76,28 @@ public static class ProductionDialogs
         var name = new TextBox { Text = original.Name };
         var fieldBoxes = new Dictionary<string, TextBox>();
         var fieldRows = new List<(string, Control)>();
-        foreach (var field in GraphicTemplates.Fields(original.Kind))
+        foreach (var field in GraphicTemplates.FieldsOf(original))
         {
             var box = new TextBox { Text = original.Field(field.Key), AcceptsReturn = field.Multiline, TextWrapping = field.Multiline ? TextWrapping.Wrap : TextWrapping.NoWrap };
             if (field.Multiline)
                 box.Height = 96;
             fieldBoxes[field.Key] = box;
-            fieldRows.Add((field.Label, box));
+            if (field.FileFilter is { } filter)
+            {
+                var pick = new Button { Content = "Examinar…" };
+                pick.Click += async (_, _) =>
+                {
+                    if (await vm.Dialogs.PickFileAsync(field.Label, filter) is { } path)
+                        box.Text = path;
+                };
+                var row = new DockPanel { Children = { pick, box } };
+                DockPanel.SetDock(pick, Dock.Right);
+                fieldRows.Add((field.Label, row));
+            }
+            else
+            {
+                fieldRows.Add((field.Label, box));
+            }
         }
 
         var primary = ColorBox(original.Style.PrimaryColor);
@@ -171,7 +187,7 @@ public static class ProductionDialogs
                     Form(("Archivo de datos", dataRow)),
                     new TextBlock
                     {
-                        Text = "Campos: " + string.Join(", ", GraphicTemplates.Fields(original.Kind).Select(f => f.Key)),
+                        Text = "Campos: " + string.Join(", ", GraphicTemplates.FieldsOf(original).Select(f => f.Key)),
                         Classes = { "muted" }, FontSize = 11,
                     },
                     error,
@@ -206,6 +222,142 @@ public static class ProductionDialogs
         var cancel = new Button { Content = "Cerrar", IsCancel = true };
         cancel.Click += (_, _) => window.Close();
         window.Content = Layout(body, saveTemplate, cancel, apply, ok);
+        await window.ShowDialog(owner);
+    }
+
+    // ---- Kit de marca -----------------------------------------------------------------------------
+
+    public static async Task ShowBrandKitAsync(MainViewModel vm)
+    {
+        if (vm.Dialogs.Owner is not { } owner)
+            return;
+        var window = NewWindow("Kit de marca", 640, 600);
+        var kit = vm.Brand.Load();
+        var name = new TextBox();
+        var primary = ColorBox(kit.Style.PrimaryColor);
+        var secondary = ColorBox(kit.Style.SecondaryColor);
+        var text = ColorBox(kit.Style.TextColor);
+        var accentText = ColorBox(kit.Style.AccentTextColor);
+        var faces = FontManager.Current.SystemFonts.Select(f => f.Name).OrderBy(n => n).ToList();
+        var font = new ComboBox { ItemsSource = faces, MinWidth = 220 };
+        var logo = new TextBox { Watermark = "Sin logo" };
+        var browse = new Button { Content = "Examinar…", Margin = new Thickness(8, 0, 0, 0) };
+        browse.Click += async (_, _) =>
+        {
+            if (await vm.Dialogs.PickFileAsync("Logo", GraphicTemplates.ImageFilter) is { } path)
+                logo.Text = path;
+        };
+        var logoRow = new DockPanel { Children = { browse, logo } };
+        DockPanel.SetDock(browse, Dock.Right);
+        var error = Error();
+        var status = new TextBlock { Classes = { "muted" }, TextWrapping = TextWrapping.Wrap };
+
+        void Show(BrandKit k)
+        {
+            name.Text = k.Name;
+            primary.Color = Color.Parse(k.Style.PrimaryColor);
+            secondary.Color = Color.Parse(k.Style.SecondaryColor);
+            text.Color = Color.Parse(k.Style.TextColor);
+            accentText.Color = Color.Parse(k.Style.AccentTextColor);
+            font.SelectedItem = faces.FirstOrDefault(f => f == k.Style.FontFace) ?? faces.FirstOrDefault();
+            logo.Text = k.Logo;
+        }
+        Show(kit);
+
+        BrandKit Build() => new(name.Text?.Trim() ?? "",
+            new GraphicStyle(Hex(primary.Color), Hex(secondary.Color), Hex(text.Color), Hex(accentText.Color), font.SelectedItem as string ?? kit.Style.FontFace),
+            logo.Text?.Trim() ?? "");
+
+        bool Save()
+        {
+            try
+            {
+                var built = Build();
+                if (built.Logo.Length > 0 && !File.Exists(built.Logo))
+                    throw new ArgumentException($"No se encuentra el logo: {built.Logo}");
+                vm.Brand.Save(built);
+                error.Text = "";
+                return true;
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+            {
+                error.Text = ex.Message;
+                return false;
+            }
+        }
+
+        var importButton = new Button { Content = "Importar…" };
+        importButton.Click += async (_, _) =>
+        {
+            if (await vm.Dialogs.PickFileAsync("Importar kit de marca", BrandKitStore.FileFilter) is not { } path)
+                return;
+            try
+            {
+                Show(vm.Brand.Import(path));
+                error.Text = "";
+                status.Text = "Kit importado. Pulsa «Guardar» para usarlo.";
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                error.Text = ex.Message;
+            }
+        };
+        var exportButton = new Button { Content = "Exportar…" };
+        exportButton.Click += async (_, _) =>
+        {
+            if (await vm.Dialogs.SaveFileAsync("Exportar kit de marca", (name.Text ?? "marca") + ".lsbrand", "lsbrand") is not { } path)
+                return;
+            try
+            {
+                vm.Brand.Export(Build(), path);
+                error.Text = "";
+                status.Text = $"Exportado: {path}";
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                error.Text = ex.Message;
+            }
+        };
+        var applyAll = new Button { Content = "Aplicar a todos los gráficos" };
+        applyAll.Click += async (_, _) =>
+        {
+            if (!Save())
+                return;
+            var result = await vm.Run(new ApplyBrandCommand(Build()));
+            error.Text = result.Success ? "" : result.Error;
+            if (result.Success)
+                status.Text = "Marca aplicada a todos los gráficos (Ctrl+Z para deshacer).";
+        };
+        var ok = Primary("Guardar");
+        ok.Click += (_, _) =>
+        {
+            if (Save())
+                window.Close();
+        };
+        var cancel = new Button { Content = "Cerrar", IsCancel = true };
+        cancel.Click += (_, _) => window.Close();
+
+        var body = new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 10,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Colores, tipografía y logo que reciben los gráficos nuevos. «Aplicar a todos» los lleva también a los gráficos de este proyecto.",
+                        Classes = { "muted" }, TextWrapping = TextWrapping.Wrap,
+                    },
+                    Form(("Nombre", name), ("Color principal", primary), ("Color de fondo", secondary), ("Texto", text),
+                        ("Texto sobre color principal", accentText), ("Tipografía", font), ("Logo", logoRow)),
+                    error,
+                    status,
+                },
+            },
+        };
+        window.Content = Layout(body, importButton, exportButton, applyAll, cancel, ok);
         await window.ShowDialog(owner);
     }
 

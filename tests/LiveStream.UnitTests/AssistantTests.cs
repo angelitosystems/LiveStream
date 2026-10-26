@@ -172,7 +172,7 @@ public sealed class AssistantTests : IAsyncLifetime
         Assert.Equal("\"default\"", JsonSerializer.Serialize(new Default()));
     }
 
-    private sealed class FakeOutputs : IOutputController
+    internal sealed class FakeOutputs : IOutputController
     {
         public bool IsStreaming { get; private set; }
         public bool IsRecording { get; private set; }
