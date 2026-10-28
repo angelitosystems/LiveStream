@@ -24,6 +24,28 @@ internal sealed class OptimizationFeatures(LibObsEngine engine, ITestOutputHelpe
         await Assert.ThrowsAsync<NativeEngineException>(() => engine.SetStreamVideoBitrateAsync(1000, None)); // sin emisión
 
         await DynamicBitrateAgainstLocalRtmpAsync();
+        await BenchmarkExecutionAsync();
+    }
+
+    private async Task BenchmarkExecutionAsync()
+    {
+        var sceneId = Guid.NewGuid();
+        await engine.CreateSceneAsync(sceneId, "Benchmark_Test_Scene", None);
+        try
+        {
+            var candidates = new[] { new LiveStream.Application.Optimization.EncoderCapability("obs_x264", "x264", "h264", false, "CPU", true) };
+            var tempDir = Path.Combine(Path.GetTempPath(), "LiveStreamTests", "bench");
+            var results = await LiveStream.Application.Optimization.EncoderBenchmark.RunAsync(
+                engine, candidates, 2000, TimeSpan.FromSeconds(2), tempDir,
+                msg => output.WriteLine(msg), [sceneId], 1280, 720, None);
+            Assert.Single(results);
+            Assert.True(results[0].Ok, $"Benchmark falló: {results[0].Error}");
+            output.WriteLine($"Benchmark con estrés visual exitoso: {results[0].EncoderName}, frames {results[0].EncodedFrames}, CPU {results[0].CpuPercent:0}%");
+        }
+        finally
+        {
+            await engine.RemoveSceneAsync(sceneId, None);
+        }
     }
 
     private async Task DynamicBitrateAgainstLocalRtmpAsync()

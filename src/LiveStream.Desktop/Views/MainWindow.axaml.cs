@@ -1,3 +1,5 @@
+using Avalonia.Layout;
+using Avalonia.Media;
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
@@ -5,6 +7,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using LiveStream.Desktop.Components;
 using LiveStream.Desktop.Studio;
 using LiveStream.Desktop.ViewModels;
 using LiveStream.Desktop.Views.Dialogs;
@@ -13,7 +16,6 @@ namespace LiveStream.Desktop.Views;
 
 public sealed partial class MainWindow : Window
 {
-    private readonly GridLength[] _defaultDockColumns;
     private readonly GridLength _defaultDockHeight;
     private CanvasEditorController? _editor;
     private bool _syncingSourceSelection;
@@ -21,7 +23,16 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _defaultDockColumns = Docks.ColumnDefinitions.Select(c => c.Width).ToArray();
+        DockHost.RegisterPanel(new StudioDockHost.PanelDefinition("scenes", "Escenas", "Icon.Scenes", ScenesPanel, ScenesHeader));
+        DockHost.RegisterPanel(new StudioDockHost.PanelDefinition("sources", "Fuentes", "Icon.Layers", SourcesPanel, SourcesHeader));
+        DockHost.RegisterPanel(new StudioDockHost.PanelDefinition("graphics", "Gráficos", "Icon.Graphics", GraphicsPanel, GraphicsHeader));
+        DockHost.RegisterPanel(new StudioDockHost.PanelDefinition("mixer", "Mezclador de audio", "Icon.Mixer", MixerPanel, MixerHeader));
+        DockHost.RegisterPanel(new StudioDockHost.PanelDefinition("chat", "Chat en vivo", "Icon.Chat", ChatPanel, ChatHeader));
+        DockHost.RegisterPanel(new StudioDockHost.PanelDefinition("alerts", "Alertas", "Icon.Alerts", AlertsPanel, AlertsHeader));
+        DockHost.RegisterPanel(new StudioDockHost.PanelDefinition("transitions", "Transiciones", "Icon.Transition", TransitionsPanel, TransitionsHeader));
+        DockHost.RegisterPanel(new StudioDockHost.PanelDefinition("controls", "Controles", "Icon.Broadcast", ControlsPanel, ControlsHeader));
+        DockHost.InitializeLayout();
+
         _defaultDockHeight = Workspace.RowDefinitions[3].Height;
         Opened += async (_, _) =>
         {
@@ -58,6 +69,10 @@ public sealed partial class MainWindow : Window
         vm.TransitionNeedsSettings += async (_, type) =>
             await Guard("Transición", () => ProductionDialogs.ShowTransitionSettingsAsync(vm, null, type));
         ApplyStudioLayout(vm.StudioMode);
+        vm.Alerts.RequestOpenDesigner += async () =>
+            await Guard("Editor de alertas", () => AlertDesignerDialog.ShowAsync(vm, this));
+        vm.Alerts.RequestOpenSoundBank += async () =>
+            await Guard("Banco de sonidos", () => SoundBankDialog.ShowPickerAsync(vm, this));
     }
 
     /// <summary>Fuera del modo estudio la vista previa ocupa todo el ancho; dentro, se reparte con el programa.</summary>
@@ -215,6 +230,42 @@ public sealed partial class MainWindow : Window
             await ProductionDialogs.ShowFiltersAsync(Vm, channel.SourceId);
     });
 
+    private async void OnMixerProperties(object? sender, RoutedEventArgs e) => await Guard("Propiedades de audio", async () =>
+    {
+        if ((sender as Control)?.DataContext is MixerChannelViewModel channel)
+            await StudioDialogs.ShowPropertiesAsync(Vm, channel.SourceId);
+        else if (Vm.Mixer.FirstOrDefault() is { } first)
+            await StudioDialogs.ShowPropertiesAsync(Vm, first.SourceId);
+    });
+
+    private async void OnMixerChannelDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is MixerChannelViewModel channel)
+        {
+            await Guard("Propiedades de audio", () => StudioDialogs.ShowPropertiesAsync(Vm, channel.SourceId));
+            e.Handled = true;
+        }
+    }
+
+    private async void OnMixerDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if ((e.Source as Control)?.DataContext is MixerChannelViewModel channel)
+        {
+            await Guard("Propiedades de audio", () => StudioDialogs.ShowPropertiesAsync(Vm, channel.SourceId));
+            e.Handled = true;
+            return;
+        }
+
+        await Guard("Ajustes de audio", () => StudioDialogs.ShowSettingsAsync(Vm, "Audio"));
+        e.Handled = true;
+    }
+
+    private async void OnAudioSettingsClick(object? sender, RoutedEventArgs e) =>
+        await Guard("Ajustes de audio", () => StudioDialogs.ShowSettingsAsync(Vm, "Audio"));
+
+    private async void OnAddAudioSourceClick(object? sender, RoutedEventArgs e) =>
+        await Guard("Añadir fuente de audio", () => StudioDialogs.ShowAddSourceAsync(Vm, "Audio"));
+
     private async void OnTransitionSettings(object? sender, RoutedEventArgs e) =>
         await Guard("Transición", () => ProductionDialogs.ShowTransitionSettingsAsync(Vm));
 
@@ -224,10 +275,11 @@ public sealed partial class MainWindow : Window
             await ProductionDialogs.ShowTransitionSettingsAsync(Vm, row.Id);
     });
 
-    private async void OnEditGraphic(object? sender, RoutedEventArgs e) => await Guard("Gráfico", async () =>
+    /// <summary>«Editar gráfico»: abre siempre Diseño Libre, el único editor de gráficos (las plantillas se convierten con confirmación).</summary>
+    private async void OnEditGraphic(object? sender, RoutedEventArgs e) => await Guard("Diseño", async () =>
     {
         if (Vm.SelectedGraphic is { } row)
-            await ProductionDialogs.ShowGraphicEditorAsync(Vm, row.Id);
+            await OpenDesignerAsync(row.Id);
         else
             Vm.StatusMessage = "Selecciona un gráfico para editarlo.";
     });
@@ -243,7 +295,7 @@ public sealed partial class MainWindow : Window
         await OpenDesignerAsync(row.Id);
     });
 
-    /// <summary>Doble clic: diseñador para los diseños libres y formulario para las plantillas.</summary>
+    /// <summary>Doble clic: siempre el editor de diseño libre (único editor de gráficos).</summary>
     private async void OnGraphicDoubleTapped(object? sender, TappedEventArgs e)
     {
         // Doble clic sobre AIRE o los controles de la fila no abre el editor.
@@ -252,10 +304,7 @@ public sealed partial class MainWindow : Window
             return;
         if (Vm.SelectedGraphic is not { } row)
             return;
-        if (row.Kind == Domain.Graphics.GraphicKind.Custom)
-            await Guard("Diseño", () => GraphicDesignerDialog.ShowAsync(Vm, row.Id));
-        else
-            await Guard("Gráfico", () => ProductionDialogs.ShowGraphicEditorAsync(Vm, row.Id));
+        await OpenDesignerAsync(row.Id);
     }
 
     private async Task OpenDesignerAsync(Guid graphicId)
@@ -295,6 +344,12 @@ public sealed partial class MainWindow : Window
         if (Vm.SelectedGraphic is { } row)
             await Guard("Exportar gráfico", () => Vm.ExportGraphicAsync(row.Id));
     }
+
+    private async void OnAlertDesigner(object? sender, RoutedEventArgs e) =>
+        await Guard("Editor de alertas", () => AlertDesignerDialog.ShowAsync(Vm, this));
+
+    private async void OnSoundBank(object? sender, RoutedEventArgs e) =>
+        await Guard("Banco de sonidos", () => SoundBankDialog.ShowPickerAsync(Vm, this));
 
     private async void OnResourceLibrary(object? sender, RoutedEventArgs e) =>
         await Guard("Biblioteca de recursos", () => ResourceLibraryDialog.ShowBrowserAsync(Vm));
@@ -360,9 +415,15 @@ public sealed partial class MainWindow : Window
         }
     });
 
+    private async void OnIntegrations(object? sender, RoutedEventArgs e) => await Guard("Integraciones", () => IntegrationsDialog.ShowAsync(Vm));
+
     private async void OnDestinations(object? sender, RoutedEventArgs e) => await Guard("Destinos", () => DestinationsDialog.ShowAsync(Vm));
 
     private async void OnSettings(object? sender, RoutedEventArgs e) => await Guard("Ajustes", () => StudioDialogs.ShowSettingsAsync(Vm));
+
+    private async void OnTtsSettings(object? sender, RoutedEventArgs e) => await Guard("Lectura de chat (TTS)", () => ProductionDialogs.ShowTtsSettingsAsync(Vm));
+
+    private async void OnMonetaryAlerts(object? sender, RoutedEventArgs e) => await Guard("Donaciones y recompensas", () => ProductionDialogs.ShowMonetaryAlertsAsync(Vm));
 
     /// <summary>Los manejadores async void no pueden propagar errores: se registran y se muestran.</summary>
     private async Task Guard(string what, Func<Task> action)
@@ -387,38 +448,28 @@ public sealed partial class MainWindow : Window
 
     private void OnResetLayout(object? sender, RoutedEventArgs e)
     {
-        for (var i = 0; i < _defaultDockColumns.Length; i++)
-            Docks.ColumnDefinitions[i].Width = _defaultDockColumns[i];
+        DockHost.ResetToDefault();
         Workspace.RowDefinitions[1].Height = new GridLength(1, GridUnitType.Star);
         Workspace.RowDefinitions[3].Height = _defaultDockHeight;
     }
 
     // ---- Distribución de paneles (ajustes del equipo) ---------------------------------------------
 
-    /// <summary>Restaura el reparto de columnas del dock y la altura de la fila de paneles.</summary>
+    /// <summary>Restaura la altura de la fila de paneles del dock.</summary>
     private void RestorePanelLayout()
     {
         var layout = Vm.Machine.Load();
-        if (layout.DockColumnWidths is { Length: > 0 } columns)
-        {
-            var widths = columns.Split(',').Select(s => s.Trim()).ToList();
-            if (widths.Count == Docks.ColumnDefinitions.Count)
-                for (var i = 0; i < widths.Count; i++)
-                    if (GridLength.Parse(widths[i]) is { } width)
-                        Docks.ColumnDefinitions[i].Width = width;
-        }
         if (layout.DockRowHeight is { Length: > 0 } height && GridLength.Parse(height) is { } rowHeight)
             Workspace.RowDefinitions[3].Height = rowHeight;
     }
 
     private void SavePanelLayout()
     {
-        var columns = string.Join(',', Docks.ColumnDefinitions.Select(c => c.Width.ToString()));
         var height = Workspace.RowDefinitions[3].Height.ToString();
         var settings = Vm.Machine.Load();
-        if (columns == settings.DockColumnWidths && height == settings.DockRowHeight)
+        if (height == settings.DockRowHeight)
             return;
-        Vm.Machine.Save(settings with { DockColumnWidths = columns, DockRowHeight = height });
+        Vm.Machine.Save(settings with { DockRowHeight = height });
     }
 
     private void OnOpenRecordings(object? sender, RoutedEventArgs e)
@@ -437,23 +488,216 @@ public sealed partial class MainWindow : Window
     private void OnOpenLogs(object? sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo(Infrastructure.Diagnostics.AppLog.Directory) { UseShellExecute = true });
 
-    private async void OnShortcuts(object? sender, RoutedEventArgs e) => await Vm.Dialogs.InfoAsync("Atajos de teclado",
-        "Ctrl+Z / Ctrl+Y: deshacer / rehacer\n" +
-        "Ctrl+S: guardar · Ctrl+O: abrir proyecto\n" +
-        "Ctrl+1…9: cambiar a la escena N\n" +
-        "Ctrl+D: duplicar (fuente o escena) · Supr: eliminar · F2: renombrar fuente\n" +
-        "Ctrl+L: bloquear o desbloquear · Ctrl+H: mostrar u ocultar · Ctrl+G: centrar\n" +
-        "Flechas: mover 1 px (Shift: 10 px)\n" +
-        "Ctrl+E: editar transformación · Ctrl+F: ajustar a pantalla · Ctrl+R: restablecer\n" +
-        "Ctrl+0: ajustar lienzo · Ctrl++ / Ctrl+-: zoom\n\n" +
-        "En el lienzo: arrastra para mover; los tiradores escalan (Shift deforma, Alt recorta); " +
-        "Ctrl+clic añade a la selección; rueda para zoom; botón central para desplazar. " +
-        "Arrastra imágenes, videos o audio desde el Explorador sobre el lienzo o el panel Fuentes.");
+    private async void OnShortcuts(object? sender, RoutedEventArgs e)
+    {
+        if (Vm.Dialogs.Owner is not { } owner)
+            return;
 
-    private async void OnAbout(object? sender, RoutedEventArgs e) => await Vm.Dialogs.InfoAsync("Acerca de LiveStream",
-        "LiveStream AI — estudio de producción y transmisión en vivo.\n\n" +
-        "Motor de video: libobs 32.2.2 (OBS Project), licencia GPLv2 o posterior.\n" +
-        "Interfaz: Avalonia UI. Proyecto en desarrollo (Fase 2).");
+        var window = StudioDialogs.NewWindow("Atajos de teclado", 720, 560);
+
+        Border CategoryCard(string title, params (string Key, string Description)[] shortcuts)
+        {
+            var rows = new StackPanel { Spacing = 8 };
+            foreach (var (key, desc) in shortcuts)
+            {
+                var row = new Grid { ColumnDefinitions = new ColumnDefinitions("180,*"), ColumnSpacing = 16 };
+                var badge = new Border
+                {
+                    Background = new SolidColorBrush(Color.Parse("#FF232832")),
+                    BorderBrush = new SolidColorBrush(Color.Parse("#FF363C48")),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(8, 3),
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+                    Child = new TextBlock
+                    {
+                        Text = key,
+                        FontFamily = (FontFamily)Avalonia.Application.Current!.FindResource("Sp.Mono")!,
+                        FontWeight = Avalonia.Media.FontWeight.SemiBold,
+                        FontSize = 11,
+                        Foreground = new SolidColorBrush(Color.Parse("#FF3D8BFF")),
+                    },
+                };
+                var text = new TextBlock
+                {
+                    Text = desc,
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Color.Parse("#FFE6E8EB")),
+                };
+                row.Children.Add(badge);
+                row.Children.Add(StudioDialogs.WithColumn(text, 1));
+                rows.Children.Add(row);
+            }
+
+            return new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#FF161A22")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FF232832")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16, 12),
+                Margin = new Thickness(0, 0, 0, 12),
+                Child = new StackPanel
+                {
+                    Spacing = 10,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = title,
+                            FontWeight = Avalonia.Media.FontWeight.SemiBold,
+                            FontSize = 13,
+                            Foreground = new SolidColorBrush(Color.Parse("#FF3D8BFF")),
+                        },
+                        rows,
+                    },
+                },
+            };
+        }
+
+        var canvasTips = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FF161A22")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#FF232832")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(16, 12),
+            Margin = new Thickness(0, 0, 0, 12),
+            Child = new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = "Interacciones directas en el Lienzo", FontWeight = Avalonia.Media.FontWeight.SemiBold, FontSize = 13, Foreground = new SolidColorBrush(Color.Parse("#FF3D8BFF")) },
+                    new TextBlock { Text = "• Arrastrar elementos: mueve la posición en el lienzo\n• Tiradores: escalan el elemento (Mantener Mayús para deformar libremente, Alt para recortar bordes)\n• Ctrl + Clic: añade elementos a la selección múltiple\n• Rueda del ratón: zoom de la vista previa · Botón central: encuadre y desplazamiento panorámico\n• Arrastrar y soltar: suelta imágenes, videos o audio desde el Explorador directamente al lienzo o a la lista de fuentes", FontSize = 12, Classes = { "muted" }, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                },
+            },
+        };
+
+        var content = new ScrollViewer
+        {
+            Padding = new Thickness(16),
+            Content = new StackPanel
+            {
+                Children =
+                {
+                    CategoryCard("Proyecto y Edición",
+                        ("Ctrl + Z", "Deshacer la última acción"),
+                        ("Ctrl + Y", "Rehacer la última acción"),
+                        ("Ctrl + S", "Guardar el proyecto actual"),
+                        ("Ctrl + O", "Abrir un proyecto existente"),
+                        ("Ctrl + Espacio", "Abrir o alternar el Asistente de IA")),
+                    CategoryCard("Escenas y Fuentes",
+                        ("Ctrl + 1 … 9", "Cambiar directamente a la escena N"),
+                        ("Ctrl + D", "Duplicar la fuente o escena seleccionada"),
+                        ("Supr", "Eliminar la fuente o escena seleccionada"),
+                        ("F2", "Renombrar la fuente seleccionada"),
+                        ("Ctrl + L", "Bloquear o desbloquear la fuente"),
+                        ("Ctrl + H", "Mostrar u ocultar la fuente seleccionada"),
+                        ("Ctrl + G", "Centrar la fuente en el lienzo")),
+                    CategoryCard("Transformación y Navegación",
+                        ("Flechas del teclado", "Mover la selección 1 px (Mayús + Flechas: 10 px)"),
+                        ("Ctrl + E", "Abrir editor de transformación"),
+                        ("Ctrl + F", "Ajustar la fuente al tamaño del lienzo"),
+                        ("Ctrl + R", "Restablecer transformación"),
+                        ("Ctrl + 0", "Ajustar vista del lienzo a la ventana"),
+                        ("Ctrl + + / Ctrl + -", "Aumentar o reducir zoom de la vista previa")),
+                    canvasTips,
+                },
+            },
+        };
+
+        var okBtn = StudioDialogs.Primary("Entendido");
+        okBtn.Click += (_, _) => window.Close();
+
+        window.Content = StudioDialogs.Layout(content, okBtn);
+        await window.ShowDialog(owner);
+    }
+
+    private async void OnAbout(object? sender, RoutedEventArgs e)
+    {
+        if (Vm.Dialogs.Owner is not { } owner)
+            return;
+
+        var window = StudioDialogs.NewWindow("Acerca de LiveStream", 540, 480);
+        var icon = new Glyph
+        {
+            Data = (StreamGeometry)Avalonia.Application.Current!.FindResource("Icon.Broadcast")!,
+            Width = 48,
+            Height = 48,
+            Foreground = new SolidColorBrush(Color.Parse("#FF3D8BFF")),
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+        };
+
+        var titleBlock = new TextBlock
+        {
+            Text = "LiveStream AI Studio",
+            FontSize = 20,
+            FontWeight = Avalonia.Media.FontWeight.Bold,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+        };
+
+        var versionBlock = new TextBlock
+        {
+            Text = "Versión 0.9.0-preview · 64 bits",
+            FontSize = 12,
+            Classes = { "muted" },
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+        };
+
+        var sysInfo = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FF1C2028")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#FF282D36")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(16),
+            Margin = new Thickness(0, 12, 0, 0),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock { Text = "Componentes del sistema", FontWeight = Avalonia.Media.FontWeight.SemiBold, FontSize = 13 },
+                    new TextBlock { Text = $"• Motor de video y composición: libobs 32.2.2 (OBS Project, GPLv2)", FontSize = 12 },
+                    new TextBlock { Text = $"• Entorno de interfaz: Avalonia UI 11.2 (XAML multiplataforma)", FontSize = 12 },
+                    new TextBlock { Text = $"• Runtime: .NET {Environment.Version} en {Environment.OSVersion}", FontSize = 12 },
+                    new TextBlock { Text = $"• Hardware: {Environment.ProcessorCount} hilos lógicos · Modo DPI adaptable", FontSize = 12 },
+                },
+            },
+        };
+
+        var licenseBlock = new TextBlock
+        {
+            Text = "Diseñado para producción audiovisual y streaming en directo profesional con plugins, gráficos dinámicos y aceleración por GPU.",
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            Classes = { "muted" },
+            FontSize = 11,
+            Margin = new Thickness(4, 10, 4, 0),
+            TextAlignment = Avalonia.Media.TextAlignment.Center,
+        };
+
+        var okBtn = StudioDialogs.Primary("Cerrar");
+        okBtn.Click += (_, _) => window.Close();
+
+        var content = new StackPanel
+        {
+            Margin = new Thickness(24),
+            Spacing = 8,
+            Children =
+            {
+                icon,
+                titleBlock,
+                versionBlock,
+                sysInfo,
+                licenseBlock,
+            },
+        };
+
+        window.Content = StudioDialogs.Layout(new ScrollViewer { Content = content }, okBtn);
+        await window.ShowDialog(owner);
+    }
 
     private void OnExit(object? sender, RoutedEventArgs e) => Close();
 

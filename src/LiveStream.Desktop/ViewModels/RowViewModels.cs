@@ -121,6 +121,20 @@ public static class SourceCatalog
         _ => "Icon.Layers",
     };
 
+    /// <summary>Icono de cabecera para cada categoría del catálogo de fuentes.</summary>
+    public static string CategoryIconKey(string category) => category switch
+    {
+        "Captura" => "Icon.Display",
+        "Audio" => "Icon.Speaker",
+        "Contenido visual" => "Icon.Image",
+        _ => "Icon.Layers",
+    };
+
+    /// <summary>Geometría del icono de categoría (null si el recurso no está cargado).</summary>
+    public static StreamGeometry? CategoryGeometry(string category) =>
+        Avalonia.Application.Current?.TryGetResource(CategoryIconKey(category), ThemeVariant.Default, out var value) == true && value is StreamGeometry g
+            ? g : null;
+
     /// <summary>Geometría del icono (null si el recurso no está cargado: se oculta el icono, no explota).</summary>
     public static StreamGeometry? Geometry(SourceKind kind) =>
         Avalonia.Application.Current?.TryGetResource(IconKey(kind), ThemeVariant.Default, out var value) == true && value is StreamGeometry g
@@ -147,3 +161,104 @@ public sealed partial class GraphicRowViewModel(Guid id, Domain.Graphics.Graphic
 
 /// <summary>Opción del menú de gráficos: una plantilla o la entrada de importación (Kind null → importar .lsgfx).</summary>
 public sealed record GraphicKindOption(Domain.Graphics.GraphicKind? Kind, string Label);
+
+/// <summary>Fila de mensaje en el chat unificado.</summary>
+public sealed partial class ChatMessageRowViewModel(Domain.Chat.ChatMessage message) : ObservableObject
+{
+    [ObservableProperty] private Domain.Chat.ChatMessage _message = message;
+
+    public string Id => Message.Id;
+    public string AuthorName => Message.AuthorName;
+    public string MessageText => Message.Message;
+    public string PlatformName => Message.Platform.ToString();
+    public string TimeText => Message.Timestamp.ToLocalTime().ToString("HH:mm:ss");
+    public bool IsDonation => Message.IsDonation;
+    public string DonationText => Message.FormattedDonation;
+    public bool IsHighlighted => Message.IsHighlighted;
+    public bool IsModerator => Message.IsModerator;
+    public bool IsSubscriber => Message.IsSubscriber;
+    public bool IsModerated => Message.IsModerated;
+    public bool IsFirstTime => Message.IsFirstTimeChatter;
+
+    public string PlatformIconKey => Message.Platform switch
+    {
+        StreamPlatform.YouTube => "Icon.Youtube",
+        StreamPlatform.Twitch => "Icon.Twitch",
+        StreamPlatform.TikTok => "Icon.Tiktok",
+        StreamPlatform.Facebook => "Icon.Facebook",
+        StreamPlatform.Instagram => "Icon.Instagram",
+        _ => "Icon.Chat",
+    };
+
+    public string PlatformColor => Message.Platform switch
+    {
+        StreamPlatform.YouTube => "#EF4444",
+        StreamPlatform.Twitch => "#9333EA",
+        StreamPlatform.TikTok => "#06B6D4",
+        StreamPlatform.Facebook => "#3B82F6",
+        StreamPlatform.Instagram => "#EC4899",
+        _ => "#6B7280",
+    };
+}
+
+/// <summary>Fila de evento o alerta en el centro de alertas.</summary>
+public sealed partial class AlertEventRowViewModel(Domain.Alerts.AlertEvent alert, string formattedText) : ObservableObject
+{
+    public Domain.Alerts.AlertEvent Alert { get; } = alert;
+    public string FormattedText { get; } = formattedText;
+    public string Username => Alert.Username;
+    public string KindLabel => Alert.Kind switch
+    {
+        Domain.Alerts.AlertKind.Follower => "Seguidor",
+        Domain.Alerts.AlertKind.Subscription => "Suscripción",
+        Domain.Alerts.AlertKind.Donation => "Donación",
+        Domain.Alerts.AlertKind.SuperChat => "Super Chat",
+        Domain.Alerts.AlertKind.VirtualGift => "Regalo",
+        Domain.Alerts.AlertKind.Share => "Compartido",
+        Domain.Alerts.AlertKind.CommunityMember => "Miembro",
+        Domain.Alerts.AlertKind.Raid => "Raid",
+        Domain.Alerts.AlertKind.Greeting => "Bienvenida",
+        _ => "Alerta"
+    };
+    public string TimeText => Alert.Timestamp.ToLocalTime().ToString("HH:mm:ss");
+    public string PlatformName => Alert.Platform.ToString();
+}
+
+/// <summary>Fila de estado de conexión de plataforma.</summary>
+public sealed partial class PlatformIntegrationRowViewModel(Domain.Integrations.PlatformIntegrationConfig config) : ObservableObject
+{
+    [ObservableProperty] private Domain.Integrations.PlatformIntegrationConfig _config = config;
+
+    public StreamPlatform Platform => Config.Platform;
+    public string Name => Config.Platform switch
+    {
+        StreamPlatform.YouTube => "YouTube Live",
+        StreamPlatform.Twitch => "Twitch",
+        StreamPlatform.TikTok => "TikTok LIVE",
+        StreamPlatform.Facebook => "Facebook Live",
+        StreamPlatform.Instagram => "Instagram Live",
+        _ => Config.Platform.ToString()
+    };
+
+    public Domain.Integrations.IntegrationStatus Status => Config.Status;
+
+    public string StatusText => Config.Status switch
+    {
+        Domain.Integrations.IntegrationStatus.Connected => "Conectado",
+        Domain.Integrations.IntegrationStatus.Connecting => "Conectando…",
+        Domain.Integrations.IntegrationStatus.TokenExpired => "Token expirado",
+        Domain.Integrations.IntegrationStatus.Error => "Error",
+        Domain.Integrations.IntegrationStatus.RateLimited => "Límite de cuota",
+        _ => "Desconectado"
+    };
+
+    public string StatusColor => Config.Status switch
+    {
+        Domain.Integrations.IntegrationStatus.Connected => "#10B981",
+        Domain.Integrations.IntegrationStatus.Connecting => "#F59E0B",
+        Domain.Integrations.IntegrationStatus.TokenExpired => "#EF4444",
+        Domain.Integrations.IntegrationStatus.Error => "#EF4444",
+        Domain.Integrations.IntegrationStatus.RateLimited => "#F59E0B",
+        _ => "#6B7280"
+    };
+}

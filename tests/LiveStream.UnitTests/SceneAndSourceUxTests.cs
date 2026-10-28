@@ -186,3 +186,26 @@ public sealed class SourceCatalogTests
         Assert.Equal("Icon.Layers", SourceCatalog.IconKey(SourceKind.Browser));
     }
 }
+
+public sealed class MixerUxTests
+{
+    [Fact]
+    public void MixerChannel_HasMuteAndVolumeDbProperties()
+    {
+        var channel = new MixerChannelViewModel(Guid.NewGuid());
+        channel.VolumeDb = -6.0;
+        Assert.Equal(-6.0, channel.VolumeDb);
+        Assert.Contains("dB", channel.VolumeText);
+        channel.Muted = true;
+        Assert.True(channel.Muted);
+    }
+
+    [Fact]
+    public void RemoveSource_WhenSourceDoesNotExist_ReturnsNullWithoutThrowing()
+    {
+        var project = new StudioProject(Guid.NewGuid(), "Test");
+        var nonExistentId = Guid.NewGuid();
+        var removed = project.RemoveSource(nonExistentId);
+        Assert.Null(removed);
+    }
+}

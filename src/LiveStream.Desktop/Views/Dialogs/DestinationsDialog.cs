@@ -1,3 +1,4 @@
+﻿using LiveStream.Domain.Compositions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -115,7 +116,28 @@ public static class DestinationsDialog
                         await vm.Run(new RemoveDestinationCommand(d.Id, vm.Session.Destinations.IsLive));
                 };
 
-                var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { chip, startStop, edit, remove } };
+                                var formatText = d.TargetFormat switch
+                {
+                    CompositionFormat.Vertical => "9:16",
+                    CompositionFormat.Horizontal => "16:9",
+                    _ => "Dual",
+                };
+                var formatChip = new Border
+                {
+                    Background = new SolidColorBrush(Avalonia.Media.Color.Parse("#FF282C34")),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(6, 2),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Child = new TextBlock { Text = formatText, FontSize = 10, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Avalonia.Media.Color.Parse("#FFB0B8C4")) },
+                };
+                ToolTip.SetTip(formatChip, d.TargetFormat switch
+                {
+                    CompositionFormat.Vertical => "Destino para emisi?n Vertical (9:16)",
+                    CompositionFormat.Horizontal => "Destino para emisi?n Horizontal (16:9)",
+                    _ => "Destino compatible con emisi?n simult?nea (Horizontal y Vertical)",
+                });
+
+                var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { formatChip, chip, startStop, edit, remove } };
                 var row = new DockPanel();
                 DockPanel.SetDock(enabled, Dock.Left);
                 DockPanel.SetDock(buttons, Dock.Right);
@@ -196,6 +218,18 @@ public static class DestinationsDialog
             SelectedIndex = Math.Max(0, platforms.FindIndex(p => p.Platform == (destination?.Platform ?? StreamPlatform.YouTube))),
             MinWidth = 260,
         };
+                var formats = new List<(string Label, CompositionFormat Format)>
+        {
+            ("Ambos formatos (Horizontal 16:9 y Vertical 9:16)", CompositionFormat.Both),
+            ("Horizontal (16:9) - YouTube, Twitch, Facebook...", CompositionFormat.Horizontal),
+            ("Vertical (9:16) - TikTok LIVE, Shorts, Reels...", CompositionFormat.Vertical),
+        };
+        var formatBox = new ComboBox
+        {
+            ItemsSource = formats.Select(f => f.Label).ToList(),
+            SelectedIndex = Math.Max(0, formats.FindIndex(f => f.Format == (destination?.TargetFormat ?? CompositionFormat.Both))),
+            MinWidth = 260,
+        };
         var help = new TextBlock { Classes = { "muted" }, TextWrapping = TextWrapping.Wrap };
         var name = new TextBox { Text = destination?.Name ?? "" };
         var server = new TextBox { Text = destination?.Server ?? "", Watermark = "rtmp://… o rtmps://…" };
@@ -267,7 +301,7 @@ public static class DestinationsDialog
                 Spacing = 10,
                 Children =
                 {
-                    Row("Plataforma", platform), help, Row("Nombre", name), Row("Servidor", server), Row("Clave", key),
+                    Row("Plataforma", platform), help, Row("Formato objetivo", formatBox), Row("Nombre", name), Row("Servidor", server), Row("Clave", key),
                     new TextBlock { Text = "La clave se guarda cifrada para tu usuario de Windows (DPAPI), separada de la de los demás destinos; nunca va al proyecto ni a los registros.", Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap },
                     new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { probe, probeResult } },
                     ownEncoder, Row("Codificador", encoderBox), Row("Bitrate de video (kb/s)", bitrate),
@@ -283,9 +317,10 @@ public static class DestinationsDialog
             EncoderSettings? encoder = ownEncoder.IsChecked == true
                 ? vm.Project.Stream.EffectiveEncoder with { VideoEncoderId = encoderIds[Math.Max(0, encoderBox.SelectedIndex)], VideoBitrateKbps = (int)(bitrate.Value ?? 4500) }
                 : null;
+            var targetFormat = formats[Math.Max(0, formatBox.SelectedIndex)].Format;
             var updated = destination is null
-                ? StreamDestination.Create(name.Text?.Trim() ?? "", entry.Platform, server.Text?.Trim() ?? "", encoder)
-                : destination with { Name = name.Text?.Trim() ?? "", Platform = entry.Platform, Server = server.Text?.Trim() ?? "", Encoder = encoder };
+                ? StreamDestination.Create(name.Text?.Trim() ?? "", entry.Platform, server.Text?.Trim() ?? "", encoder) with { TargetFormat = targetFormat }
+                : destination with { Name = name.Text?.Trim() ?? "", Platform = entry.Platform, Server = server.Text?.Trim() ?? "", Encoder = encoder, TargetFormat = targetFormat };
             var result = isNew
                 ? await vm.Run(new AddDestinationCommand(updated))
                 : await vm.Run(new UpdateDestinationCommand(updated));

@@ -1,3 +1,4 @@
+﻿using System.Diagnostics;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -11,6 +12,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using LiveStream.Application.Commands;
 using LiveStream.Application.Graphics;
+using LiveStream.Domain.Animation;
 using LiveStream.Desktop.Components;
 using LiveStream.Desktop.ViewModels;
 using LiveStream.Domain.Graphics;
@@ -123,53 +125,153 @@ public sealed class GraphicDesignerDialog
 
     private Control BuildToolbar()
     {
-        var add = FlyoutButton("Añadir", AddMenu());
-        var align = FlyoutButton("Alinear", AlignMenu());
-        var distribute = FlyoutButton("Distribuir", DistributeMenu());
-        var order = FlyoutButton("Capa", OrderMenu());
+        var add = MenuButton("Icon.Plus", "Añadir", AddMenu());
+        var align = MenuButton("Icon.Sliders", "Alinear", AlignMenu());
+        var distribute = MenuButton("Icon.Grid", "Distribuir", DistributeMenu());
+        var order = MenuButton("Icon.Layers", "Capa", OrderMenu());
 
-        var duplicate = new Button { Content = "Duplicar" };
+        var duplicate = IconButton("Icon.Copy", "Duplicar (Ctrl+D)");
         duplicate.Click += (_, _) => Mix(keys =>
         {
             var (design, keep) = DesignOps.Duplicate(Design, keys);
             return (design, keep);
         });
-        var delete = new Button { Content = "Eliminar", Classes = { "danger" } };
+        var delete = IconButton("Icon.Trash", "Eliminar (Supr)");
+        delete.Classes.Add("danger");
         delete.Click += (_, _) => Mix(keys => (Design.Where(e => !keys.Contains(e.Key)).ToList(), Array.Empty<string>()));
 
-        var undo = new Button { Content = "Deshacer" };
+        var undo = IconButton("Icon.Undo", "Deshacer (Ctrl+Z)");
         undo.Click += (_, _) => _ = _vm.Executor.UndoAsync();
-        var redo = new Button { Content = "Rehacer" };
+        var redo = IconButton("Icon.Redo", "Rehacer (Ctrl+Y)");
         redo.Click += (_, _) => _ = _vm.Executor.RedoAsync();
 
-        _zoom = new TextBlock { Text = "Ajustar", VerticalAlignment = VerticalAlignment.Center, Classes = { "muted" } };
-        var fit = new Button { Content = "Encuadrar" };
+        _zoom = new TextBlock { Text = "Ajustar", VerticalAlignment = VerticalAlignment.Center, Classes = { "muted" }, MinWidth = 52, TextAlignment = TextAlignment.Center };
+        var fit = IconButton("Icon.Fit", "Encuadrar (Ctrl+0)");
         fit.Click += (_, _) => _canvas.ResetView();
-        var grid = new CheckBox { Content = "Cuadrícula", IsChecked = _canvas.ShowGrid };
+        var grid = IconToggle("Icon.Grid", "Cuadrícula", _canvas.ShowGrid);
         grid.Click += (_, _) => _canvas.ShowGrid = grid.IsChecked == true;
-        var snap = new CheckBox { Content = "Guías", IsChecked = _canvas.SnapEnabled };
+        var snap = IconToggle("Icon.Magnet", "Guías magnéticas", _canvas.SnapEnabled);
         snap.Click += (_, _) => _canvas.SnapEnabled = snap.IsChecked == true;
 
-        var library = new Button { Content = "Biblioteca…" };
+        var play = IconButton("Icon.Play", "Vista previa de animación: entrada + permanencia + salida");
+        play.Click += (_, _) => StartPreview();
+        var stopPreview = IconButton("Icon.Stop", "Detener la vista previa");
+        stopPreview.Click += (_, _) => StopPreview();
+
+        var library = TextIconButton("Icon.Template", "Biblioteca…", "Recursos guardados: imágenes y videos reutilizables");
         library.Click += (_, _) => _ = ResourceLibraryDialog.ShowBrowserAsync(_vm);
-        var export = new Button { Content = "Exportar…" };
+        var export = TextIconButton("Icon.Send", "Exportar…", "Guardar el gráfico como archivo .lsgfx");
         export.Click += (_, _) => _ = _vm.ExportGraphicAsync(_id);
-        var template = new Button { Content = "Plantilla…" };
+        var template = TextIconButton("Icon.Template", "Plantilla…", "Guardar como plantilla reutilizable");
         template.Click += (_, _) => _ = SaveTemplateAsync();
 
-        var addRow = new StackPanel
+        var bar = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            Margin = new Thickness(12, 10),
-            Children = { add, align, distribute, order, duplicate, delete, ToolbarSeparator(),
-                undo, redo, ToolbarSeparator(), fit, _zoom, grid, snap, ToolbarSeparator(), library, export, template },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 6),
         };
-        return addRow;
+        void Add(Control control)
+        {
+            control.Margin = new Thickness(0, 0, 4, 2);
+            bar.Children.Add(control);
+        }
+        foreach (var section in new[]
+                 {
+                     new Control[] { add, align, distribute, order },
+                     new Control[] { duplicate, delete },
+                     new Control[] { undo, redo },
+                     new Control[] { fit, _zoom, grid, snap },
+                     new Control[] { play, stopPreview },
+                     new Control[] { library, export, template },
+                 })
+        {
+            foreach (var control in section)
+                Add(control);
+            Add(ToolbarSeparator());
+        }
+
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FF16181E")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#FF282D36")),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = bar,
+        };
+    }
+
+    private static Button MenuButton(string iconKey, string text, MenuFlyout flyout)
+    {
+        var button = new Button
+        {
+            Padding = new Thickness(8, 4),
+            Height = 30,
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new Glyph { Data = Geometry(iconKey), Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center },
+                    new TextBlock { Text = text, FontSize = 12, VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+        };
+        FlyoutBase.SetAttachedFlyout(button, flyout);
+        button.Click += (_, _) => FlyoutBase.ShowAttachedFlyout(button);
+        return button;
+    }
+
+    private static Button TextIconButton(string iconKey, string text, string tooltip)
+    {
+        var button = new Button
+        {
+            Padding = new Thickness(8, 4),
+            Height = 30,
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new Glyph { Data = Geometry(iconKey), Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center },
+                    new TextBlock { Text = text, FontSize = 12, VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+        };
+        ToolTip.SetTip(button, tooltip);
+        AutomationProperties.SetName(button, tooltip);
+        return button;
     }
 
     private static Control ToolbarSeparator() =>
-        new Border { Height = 20, Width = 1, Background = new SolidColorBrush(Color.Parse("#FF3A3F4D")), Margin = new Thickness(2, 0) };
+        new Border { Height = 20, Width = 1, Margin = new Thickness(2, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, Background = new SolidColorBrush(Color.Parse("#FF3A3F4D")) };
+
+    private static Button IconButton(string iconKey, string tooltip)
+    {
+        var button = new Button
+        {
+            Classes = { "icon" },
+            Content = new Glyph { Data = Geometry(iconKey), Width = 16, Height = 16 },
+        };
+        ToolTip.SetTip(button, tooltip);
+        AutomationProperties.SetName(button, tooltip);
+        return button;
+    }
+
+    private static ToggleButton IconToggle(string iconKey, string tooltip, bool isChecked)
+    {
+        var button = new ToggleButton
+        {
+            Classes = { "icon" },
+            Content = new Glyph { Data = Geometry(iconKey), Width = 16, Height = 16 },
+            IsChecked = isChecked,
+        };
+        ToolTip.SetTip(button, tooltip);
+        AutomationProperties.SetName(button, tooltip);
+        return button;
+    }
 
     private MenuFlyout AddMenu()
     {
@@ -229,22 +331,25 @@ public sealed class GraphicDesignerDialog
 
     private Control BuildLayout(Control toolbar)
     {
-        _layers.Margin = new Thickness(0, 10, 0, 0);
-        var layers = new StackPanel { Margin = new Thickness(14, 0, 0, 12), Width = 220 };
-        layers.Children.Add(new TextBlock { Text = "Capas (arriba = delante)", FontWeight = FontWeight.SemiBold });
-        layers.Children.Add(_layers);
+        // Panel de capas: el relleno disponible lo adopta la lista (Grid y no StackPanel),
+        // así usa su propio scroll y se puede redimensionar con el separador.
+        var layersPane = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), Margin = new Thickness(12, 10, 4, 12) };
+        layersPane.Children.Add(new TextBlock { Text = "Capas (arriba = delante)", FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 0, 8) });
+        Grid.SetRow(_layers, 1);
+        layersPane.Children.Add(_layers);
 
-        var propsHeader = new TextBlock { Text = "Propiedades", FontWeight = FontWeight.SemiBold };
-        var propsScroll = new ScrollViewer { Content = _properties, Margin = new Thickness(0, 10, 0, 0) };
-        var props = new StackPanel { Margin = new Thickness(14, 0, 14, 12), Width = 340 };
-        props.Children.Add(propsHeader);
-        props.Children.Add(propsScroll);
+        var propsPane = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), Margin = new Thickness(4, 10, 12, 12) };
+        propsPane.Children.Add(new TextBlock { Text = "Inspector de propiedades", FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 0, 8) });
+        var propsScroll = new ScrollViewer { Content = _properties };
+        Grid.SetRow(propsScroll, 1);
+        propsPane.Children.Add(propsScroll);
 
         var canvas = new Border { Child = _canvas, ClipToBounds = true };
-        var splitter1 = new Border { Width = 1, Background = new SolidColorBrush(Color.Parse("#FF2A2E3A")) };
-        var splitter2 = new Border { Width = 1, Background = new SolidColorBrush(Color.Parse("#FF2A2E3A")) };
+        var splitter1 = new GridSplitter { ResizeDirection = GridResizeDirection.Columns, Background = new SolidColorBrush(Color.Parse("#FF2A2E3A")), Margin = new Thickness(2, 0) };
+        var splitter2 = new GridSplitter { ResizeDirection = GridResizeDirection.Columns, Background = new SolidColorBrush(Color.Parse("#FF2A2E3A")), Margin = new Thickness(2, 0) };
 
         var close = new Button { Content = "Cerrar", IsCancel = true, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        close.Click += (_, _) => _window?.Close();
         var footerStack = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
         footerStack.Children.Add(_error);
         footerStack.Children.Add(_status);
@@ -253,31 +358,35 @@ public sealed class GraphicDesignerDialog
         footer.Children.Add(close);
         footer.Children.Add(footerStack);
 
+        var columnDefs = new ColumnDefinitions("210,6,*,6,310");
+        // Mínimos funcionales: las listas y el inspector nunca se estrechan por debajo de lo legible.
+        columnDefs[0].MinWidth = 160;
+        columnDefs[4].MinWidth = 250;
         var grid = new Grid
         {
             RowDefinitions = new RowDefinitions("Auto,*,Auto"),
-            ColumnDefinitions = new ColumnDefinitions("220,Auto,*,Auto,340"),
+            ColumnDefinitions = columnDefs,
         };
         Grid.SetColumnSpan(toolbar, 5);
-        Grid.SetRow(layers, 1);
-        Grid.SetColumn(layers, 0);
+        Grid.SetRow(layersPane, 1);
+        Grid.SetColumn(layersPane, 0);
         Grid.SetRow(splitter1, 1);
         Grid.SetColumn(splitter1, 1);
         Grid.SetRow(canvas, 1);
         Grid.SetColumn(canvas, 2);
         Grid.SetRow(splitter2, 1);
         Grid.SetColumn(splitter2, 3);
-        Grid.SetRow(props, 1);
-        Grid.SetColumn(props, 4);
+        Grid.SetRow(propsPane, 1);
+        Grid.SetColumn(propsPane, 4);
         Grid.SetRow(footer, 2);
         Grid.SetColumnSpan(footer, 5);
 
         grid.Children.Add(toolbar);
-        grid.Children.Add(layers);
+        grid.Children.Add(layersPane);
         grid.Children.Add(splitter1);
         grid.Children.Add(canvas);
         grid.Children.Add(splitter2);
-        grid.Children.Add(props);
+        grid.Children.Add(propsPane);
         grid.Children.Add(footer);
         return grid;
     }
@@ -341,6 +450,7 @@ public sealed class GraphicDesignerDialog
 
     private void OnGestureStarted()
     {
+        StopPreview(); // editar durante la reproducción daría saltos: se detiene la vista previa.
         _gestureBase = _committed;
         _interacting = true;
     }
@@ -543,7 +653,7 @@ public sealed class GraphicDesignerDialog
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                new PathIcon { Data = Geometry(element.Kind switch { DesignElementKind.Rect => "Icon.Slideshow", DesignElementKind.Text => "Icon.Text", DesignElementKind.Image => "Icon.Image", _ => "Icon.Film" }), Width = 14, Height = 14, Opacity = 0.75 },
+                new Glyph { Data = Geometry(element.Kind switch { DesignElementKind.Rect => "Icon.Slideshow", DesignElementKind.Text => "Icon.Text", DesignElementKind.Image => "Icon.Image", _ => "Icon.Film" }), Width = 14, Height = 14, Opacity = 0.75 },
             },
         };
         var eye = new ToggleButton
@@ -557,8 +667,8 @@ public sealed class GraphicDesignerDialog
             {
                 Children =
                 {
-                    new PathIcon { Data = Geometry("Icon.Eye"), Width = 14, Height = 14, IsVisible = element.Visible },
-                    new PathIcon { Data = Geometry("Icon.EyeOff"), Width = 14, Height = 14, Opacity = 0.6, IsVisible = !element.Visible },
+                    new Glyph { Data = Geometry("Icon.Eye"), Width = 13, Height = 13, IsVisible = element.Visible },
+                    new Glyph { Data = Geometry("Icon.EyeOff"), Width = 13, Height = 13, Opacity = 0.6, IsVisible = !element.Visible },
                 },
             },
             Opacity = element.Visible ? 1 : 0.6,
@@ -576,8 +686,8 @@ public sealed class GraphicDesignerDialog
             {
                 Children =
                 {
-                    new PathIcon { Data = Geometry("Icon.Lock"), Width = 14, Height = 14, IsVisible = element.Locked },
-                    new PathIcon { Data = Geometry("Icon.Unlock"), Width = 14, Height = 14, Opacity = 0.45, IsVisible = !element.Locked },
+                    new Glyph { Data = Geometry("Icon.Lock"), Width = 13, Height = 13, IsVisible = element.Locked },
+                    new Glyph { Data = Geometry("Icon.Unlock"), Width = 13, Height = 13, Opacity = 0.45, IsVisible = !element.Locked },
                 },
             },
         };
@@ -594,9 +704,26 @@ public sealed class GraphicDesignerDialog
             Text = element.Name + label,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Opacity = element.Visible ? 1 : 0.45,
+            Opacity = element.Visible ? 1 : 0.5,
+            FontSize = 12,
         };
-        return new DockPanel { Children = { eye, lockit, glyph, name }, MinHeight = 28 };
+
+        var row = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*"),
+            ColumnSpacing = 6,
+            MinHeight = 28,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(eye, 0);
+        Grid.SetColumn(lockit, 1);
+        Grid.SetColumn(glyph, 2);
+        Grid.SetColumn(name, 3);
+        row.Children.Add(eye);
+        row.Children.Add(lockit);
+        row.Children.Add(glyph);
+        row.Children.Add(name);
+        return row;
     }
 
     // ---- Paneles --------------------------------------------------------------------------------
@@ -675,7 +802,96 @@ public sealed class GraphicDesignerDialog
         var selected = Design.Where(e => _canvas.Selection.Contains(e.Key)).ToList();
         if (selected.Count == 0)
         {
-            _properties.Children.Add(Muted("Nada seleccionado. Haz clic en el lienzo o en la lista de capas."));
+            var headerCard = new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#FF1C2028")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FF282D36")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(12),
+                Child = new StackPanel
+                {
+                    Spacing = 4,
+                    Children =
+                    {
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Spacing = 8,
+                            Children =
+                            {
+                                new Glyph { Data = Geometry("Icon.Graphics"), Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Center },
+                                new TextBlock { Text = _committed.Name, FontWeight = FontWeight.Bold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center },
+                            },
+                        },
+                        Muted($"Lienzo base: {_canvas.CanvasSize.Width:0} × {_canvas.CanvasSize.Height:0} (16:9) · Capas: {Design.Count}"),
+                    },
+                },
+            };
+            _properties.Children.Add(headerCard);
+
+            var nameBox = new TextBox { Text = _committed.Name, HorizontalAlignment = HorizontalAlignment.Stretch };
+            nameBox.LostFocus += (_, _) =>
+            {
+                var val = nameBox.Text?.Trim();
+                if (!string.IsNullOrWhiteSpace(val) && val != _committed.Name)
+                    _ = UpdateGraphicAsync(g => g with { Name = val });
+            };
+            _properties.Children.Add(new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("90,*"),
+                ColumnSpacing = 8,
+                Children =
+                {
+                    new TextBlock { Text = "Nombre:", VerticalAlignment = VerticalAlignment.Center, FontSize = 12 },
+                    StudioDialogs.WithColumn(nameBox, 1),
+                },
+            });
+
+            var animCombo = new ComboBox
+            {
+                ItemsSource = AnimationNames().Select(a => a.Value).ToList(),
+                SelectedIndex = Math.Max(0, AnimationNames().ToList().FindIndex(a => a.Key == _committed.AnimationIn)),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+            animCombo.SelectionChanged += (_, _) =>
+            {
+                if (animCombo.SelectedIndex >= 0)
+                {
+                    var anim = AnimationNames()[animCombo.SelectedIndex].Key;
+                    _ = UpdateGraphicAsync(g => g with { AnimationIn = anim });
+                }
+            };
+            _properties.Children.Add(new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("90,*"),
+                ColumnSpacing = 8,
+                Children =
+                {
+                    new TextBlock { Text = "Animación:", VerticalAlignment = VerticalAlignment.Center, FontSize = 12 },
+                    StudioDialogs.WithColumn(animCombo, 1),
+                },
+            });
+
+            var shortcutsCard = new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#FF161A22")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FF232832")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(12, 10),
+                Margin = new Thickness(0, 8, 0, 0),
+                Child = new StackPanel
+                {
+                    Spacing = 6,
+                    Children =
+                    {
+                        new TextBlock { Text = "Atajos del editor", FontWeight = FontWeight.SemiBold, FontSize = 12 },
+                        Muted("• Clic: seleccionar elemento\n• Mayús + Clic: selección múltiple\n• Ctrl + D: duplicar selección\n• Supr: eliminar selección\n• Flechas: mover (Mayús: ×10)\n• Ctrl + Rueda: zoom · Rueda: encuadrar\n• Ctrl + 0: encuadrar todo"),
+                    },
+                },
+            };
+            _properties.Children.Add(shortcutsCard);
             return;
         }
         if (selected.Count > 1)
@@ -699,6 +915,115 @@ public sealed class GraphicDesignerDialog
             return; // el elemento ya no existe (deshacer, etc.).
         var design = DesignOps.Update(Design, [element.Key], _ => element);
         _ = ApplyAsync(design, [element.Key]);
+    }
+
+    // ---- Vista previa de la animación ------------------------------------------------------------
+
+    private enum PreviewPhase { Enter, Hold, Out }
+    private DispatcherTimer? _animTimer;
+    private Stopwatch? _animSw;
+    private AnimationClip? _inAnimation;
+    private AnimationClip? _outAnimation;
+    private Rect _previewClip;
+    private PreviewPhase _previewPhase;
+
+    /// <summary>Reproduce la animación real sobre el lienzo: mismas curvas/pistas que genera el motor.</summary>
+    private void StartPreview()
+    {
+        StopPreview();
+        if (Design.Count == 0)
+        {
+            _error.Text = "Añade elementos para poder previsualizar la animación.";
+            return;
+        }
+        try
+        {
+            var canvas = _vm.Project.Canvas;
+            _inAnimation = GraphicAnimations.In(_committed, canvas);
+            _outAnimation = GraphicAnimations.Out(_committed, canvas);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            _error.Text = "No se puede previsualizar: " + ex.Message;
+            return;
+        }
+        _previewClip = ComputePreviewClip();
+        _previewPhase = PreviewPhase.Enter;
+        _animSw = Stopwatch.StartNew();
+        _animTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Background, AnimTick);
+        _animTimer.Start();
+    }
+
+    private void AnimTick(object? sender, EventArgs e)
+    {
+        if (_animSw is not { } sw)
+            return;
+        var t = sw.Elapsed.TotalSeconds;
+        switch (_previewPhase)
+        {
+            case PreviewPhase.Enter:
+            {
+                var duration = _inAnimation?.EffectiveDuration ?? 0;
+                if (duration < 0.01)
+                    BeginPhase(PreviewPhase.Hold);
+                else if (t < duration)
+                    _canvas.SetPreview(ClipEvaluator.EvaluateClip(_inAnimation!.Tracks, t), _previewClip);
+                else
+                    BeginPhase(PreviewPhase.Hold);
+                break;
+            }
+            case PreviewPhase.Hold:
+            {
+                if (t >= 1.5)
+                    BeginPhase(PreviewPhase.Out);
+                break;
+            }
+            case PreviewPhase.Out:
+            {
+                var duration = _outAnimation?.EffectiveDuration ?? 0;
+                if (duration < 0.01)
+                    StopPreview();
+                else if (t < duration)
+                    _canvas.SetPreview(ClipEvaluator.EvaluateClip(_outAnimation!.Tracks, t), _previewClip);
+                else
+                    StopPreview();
+                break;
+            }
+        }
+    }
+
+    private void BeginPhase(PreviewPhase phase)
+    {
+        _previewPhase = phase;
+        if (_previewPhase == PreviewPhase.Hold)
+            _canvas.SetPreview(null, _previewClip); // reposo: estado ya sin transformación
+        _animSw = Stopwatch.StartNew();
+    }
+
+    /// <summary>Caja del gráfico en unidades de diseño relativas a su ancla (donde va aplicado el desvelado).</summary>
+    private Rect ComputePreviewClip()
+    {
+        try
+        {
+            var layout = GraphicTemplates.Layout(_committed, _vm.Project.Canvas);
+            var (left, top, right, bottom) = layout.Bounds;
+            var gs = Math.Max(0.001, _canvas.GraphicScale);
+            return new Rect((left - _committed.X) / gs, (top - _committed.Y) / gs, (right - left) / gs, (bottom - top) / gs);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return new Rect(0, 0, 1, 1);
+        }
+    }
+
+    private void StopPreview()
+    {
+        _animTimer?.Stop();
+        _animSw = null;
+        _previewPhase = PreviewPhase.Enter;
+        _inAnimation = null;
+        _outAnimation = null;
+        _canvas.SetPreview(null, default);
     }
 
     // ---- Texto vivo del lienzo ------------------------------------------------------------------
@@ -776,6 +1101,7 @@ public sealed class GraphicDesignerDialog
 
     private void OnWindowClosed(object? sender, EventArgs e)
     {
+        StopPreview();
         _previewTimer.Stop();
         _liveTimer.Stop();
         _vm.Executor.StateChanged -= OnStateChanged;

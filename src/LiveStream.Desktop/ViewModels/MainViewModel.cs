@@ -22,8 +22,17 @@ using LiveStream.Infrastructure.Plugins;
 using LiveStream.Infrastructure.Updates;
 using LiveStream.PluginSdk;
 using LiveStream.Native.Engine;
+using LiveStream.Application.DualStreaming;
+using LiveStream.Domain.Compositions;
 
 namespace LiveStream.Desktop.ViewModels;
+
+public enum StreamOutputMode
+{
+    Horizontal,
+    Vertical,
+    Dual
+}
 
 /// <summary>
 /// Estado del estudio para la UI. Toda mutación pasa por <see cref="CommandExecutor"/>; la UI se reconstruye desde
@@ -63,7 +72,28 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
 
         _metricsTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, async (_, _) => await PollMetricsAsync());
         _meterTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, async (_, _) => await PollMetersAsync());
+        Chat = new ChatViewModel(session.Chat, session.ChatOverlay, session.ChatTts);
+        Alerts = new AlertsViewModel(session);
+        Integrations = new IntegrationsViewModel(session, secrets);
+        Tts = new TtsViewModel(session.ChatTts);
+        MonetaryAlerts = new MonetaryAlertsViewModel(session.MonetaryAlerts, session.ChannelPoints);
+        DualStream = session.DualStream;
+        DualStream.ActiveFormatChanged += (_, format) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                OnPropertyChanged(nameof(ActiveCompositionFormat));
+                OnPropertyChanged(nameof(IsHorizontalComposition));
+                OnPropertyChanged(nameof(IsVerticalComposition));
+                OnPropertyChanged(nameof(CompositionFormatLabel));
+                OnPropertyChanged(nameof(CanvasText));
+                OnPropertyChanged(nameof(Title));
+                Refresh();
+            });
+        };
+        Mixer.CollectionChanged += (_, _) => HasMixerChannels = Mixer.Count > 0;
         Refresh();
+        HasMixerChannels = Mixer.Count > 0;
     }
 
     public StudioSession Session { get; }
@@ -75,6 +105,224 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
 
     /// <summary>Plugins instalados (cada uno en su propio proceso).</summary>
     public PluginManager Plugins { get; }
+
+    /// <summary>Panel y servicio de chat unificado.</summary>
+    public ChatViewModel Chat { get; }
+
+    /// <summary>Centro y cola de alertas y eventos.</summary>
+    public AlertsViewModel Alerts { get; }
+
+    /// <summary>Gestor de integraciones y conexiones oficiales de plataformas.</summary>
+    public IntegrationsViewModel Integrations { get; }
+
+    /// <summary>Subsistema de lectura de comentarios y síntesis de voz (TTS).</summary>
+    public TtsViewModel Tts { get; }
+
+    /// <summary>Panel y configuración de alertas monetarias, donaciones y puntos de canal.</summary>
+    public MonetaryAlertsViewModel MonetaryAlerts { get; }
+
+    /// <summary>Coordinador de emisión y composición dual simultánea.</summary>
+    public DualStreamCoordinator DualStream { get; }
+
+    public CompositionFormat ActiveCompositionFormat => DualStream.ActiveFormat;
+    public bool IsHorizontalComposition => ActiveCompositionFormat == CompositionFormat.Horizontal;
+    public bool IsVerticalComposition => ActiveCompositionFormat == CompositionFormat.Vertical;
+    public string CompositionFormatLabel => IsVerticalComposition ? "Vertical (9:16)" : "Horizontal (16:9)";
+
+    private bool _isVerticalFormatActive;
+    /// <summary>
+    /// Indica si el formato y marco de referencia vertical (9:16) está activado en el estudio.
+    /// Al activarse, muestra guías superpuestas en el lienzo (Preview y Programa) y habilita modos 9:16/Dual.
+    /// </summary>
+    public bool IsVerticalFormatActive
+    {
+        get => _isVerticalFormatActive;
+        set
+        {
+            if (SetProperty(ref _isVerticalFormatActive, value))
+            {
+                OnPropertyChanged(nameof(VerticalFrameGuideText));
+                OnPropertyChanged(nameof(FormatBadgeText));
+                if (!value && SelectedStreamMode != StreamOutputMode.Horizontal)
+                    SelectedStreamMode = StreamOutputMode.Horizontal;
+                else if (value && SelectedStreamMode == StreamOutputMode.Horizontal)
+                    SelectedStreamMode = StreamOutputMode.Dual;
+            }
+        }
+    }
+
+    public string VerticalFrameGuideText => IsVerticalFormatActive ? "Guía 9:16 Activa" : "Activar 9:16";
+
+    public string FormatBadgeText => SelectedStreamMode switch
+    {
+        StreamOutputMode.Dual => "Marco 9:16 Dual Activo",
+        StreamOutputMode.Vertical => "Formato Vertical (9:16)",
+        _ => "Marco 9:16 Activo"
+    };
+
+    private StreamOutputMode _selectedStreamMode = StreamOutputMode.Horizontal;
+    public StreamOutputMode SelectedStreamMode
+    {
+        get => _selectedStreamMode;
+        set
+        {
+            if (SetProperty(ref _selectedStreamMode, value))
+            {
+                OnPropertyChanged(nameof(IsStreamModeHorizontal));
+                OnPropertyChanged(nameof(IsStreamModeVertical));
+                OnPropertyChanged(nameof(IsStreamModeDual));
+                OnPropertyChanged(nameof(StreamButtonText));
+            }
+        }
+    }
+
+    public bool IsStreamModeHorizontal => SelectedStreamMode == StreamOutputMode.Horizontal;
+    public bool IsStreamModeVertical => SelectedStreamMode == StreamOutputMode.Vertical;
+    public bool IsStreamModeDual => SelectedStreamMode == StreamOutputMode.Dual;
+
+    public string StreamButtonText => IsStreaming
+        ? "Detener transmisión"
+        : SelectedStreamMode switch
+        {
+            StreamOutputMode.Horizontal => "Iniciar transmisión (16:9)",
+            StreamOutputMode.Vertical => "Iniciar transmisión (9:16)",
+            _ => "Iniciar transmisión dual"
+        };
+
+    [RelayCommand]
+    public void SetStreamMode(StreamOutputMode mode)
+    {
+        if (mode != StreamOutputMode.Horizontal && !IsVerticalFormatActive)
+            IsVerticalFormatActive = true;
+        SelectedStreamMode = mode;
+        OnPropertyChanged(nameof(FormatBadgeText));
+    }
+
+    [RelayCommand]
+    public void ToggleVerticalFormat()
+    {
+        IsVerticalFormatActive = !IsVerticalFormatActive;
+        OnPropertyChanged(nameof(FormatBadgeText));
+    }
+
+    [RelayCommand]
+    public async Task AdaptSelectedToVerticalAsync()
+    {
+        try
+        {
+            var canvas = Project.Canvas;
+            var centerX = canvas.Width / 2.0;
+            var items = SelectedItems.Count > 0
+                ? SelectedItems.ToList()
+                : (EditSceneId.HasValue && Project.Scenes.Any(s => s.Id == EditSceneId.Value)
+                    ? Project.GetScene(EditSceneId.Value).Items.Select(i => i.Id).ToList()
+                    : []);
+            if (items.Count == 0) return;
+
+            foreach (var itemId in items)
+            {
+                var (scene, sceneItem) = Project.FindItem(itemId);
+                if (sceneItem is null) continue;
+                var (w, h) = EngineReady ? await Engine.GetSourceSizeAsync(sceneItem.SourceId, CancellationToken.None) : (0, 0);
+                var t = sceneItem.Transform;
+                var uncroppedW = w > 0 ? w - t.CropLeft - t.CropRight : (canvas.Width / 2.0);
+                var itemW = uncroppedW * t.ScaleX;
+                var newX = centerX - (itemW / 2.0);
+                await Run(new SetItemTransformCommand(itemId, t.WithPosition(Math.Round(newX), t.Y)));
+            }
+            StatusMessage = "Elementos centrados en el marco vertical 9:16.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Adaptar a 9:16: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task SwitchCompositionFormatAsync(CompositionFormat format) => await DualStream.SwitchFormatAsync(format);
+
+    [RelayCommand]
+    public async Task ToggleCompositionFormatAsync()
+    {
+        var target = IsHorizontalComposition ? CompositionFormat.Vertical : CompositionFormat.Horizontal;
+        await DualStream.SwitchFormatAsync(target);
+    }
+
+    [RelayCommand]
+    public void CreateVerticalComposition()
+    {
+        if (SelectedScene is null) return;
+        var scene = Project.GetScene(SelectedScene.Id);
+        var verticalScene = DualStream.CreateVerticalCompositionFrom(scene);
+        Refresh();
+        SelectedScene = Scenes.FirstOrDefault(s => s.Id == verticalScene.Id);
+    }
+
+    [RelayCommand]
+    public async Task StartHorizontalStreamAsync()
+    {
+        var results = await DualStream.StartHorizontalOnlyAsync();
+        var failed = results.Where(r => r.Error is not null).ToList();
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (results.Any(r => r.Error is null))
+            {
+                _streamClock.Restart();
+                _lastStreamBytes = 0;
+                _lastStreamSample = DateTime.UtcNow;
+                _wasStreaming = true;
+                IsStreaming = true;
+                OnPropertyChanged(nameof(StreamButtonText));
+            }
+            StatusMessage = results.Any(r => r.Error is null)
+                ? $"Emisión horizontal iniciada ({results.Count(r => r.Error is null)} destino{(results.Count == 1 ? "" : "s")})."
+                : $"No se pudo iniciar la emisión horizontal: {string.Join("; ", failed.Select(f => f.Error))}";
+        });
+    }
+
+    [RelayCommand]
+    public async Task StartVerticalStreamAsync()
+    {
+        var results = await DualStream.StartVerticalOnlyAsync();
+        var failed = results.Where(r => r.Error is not null).ToList();
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (results.Any(r => r.Error is null))
+            {
+                _streamClock.Restart();
+                _lastStreamBytes = 0;
+                _lastStreamSample = DateTime.UtcNow;
+                _wasStreaming = true;
+                IsStreaming = true;
+                OnPropertyChanged(nameof(StreamButtonText));
+            }
+            StatusMessage = results.Any(r => r.Error is null)
+                ? $"Emisión vertical iniciada ({results.Count(r => r.Error is null)} destino{(results.Count == 1 ? "" : "s")})."
+                : $"No se pudo iniciar la emisión vertical: {string.Join("; ", failed.Select(f => f.Error))}";
+        });
+    }
+
+    [RelayCommand]
+    public async Task StartSimultaneousStreamAsync()
+    {
+        var results = await DualStream.StartSimultaneousAsync();
+        var failed = results.Where(r => r.Error is not null).ToList();
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (results.Any(r => r.Error is null))
+            {
+                _streamClock.Restart();
+                _lastStreamBytes = 0;
+                _lastStreamSample = DateTime.UtcNow;
+                _wasStreaming = true;
+                IsStreaming = true;
+                OnPropertyChanged(nameof(StreamButtonText));
+            }
+            StatusMessage = results.Any(r => r.Error is null)
+                ? $"Emisión dual simultánea iniciada ({results.Count(r => r.Error is null)} destino{(results.Count == 1 ? "" : "s")})."
+                : $"Fallo al iniciar emisión simultánea: {string.Join("; ", failed.Select(f => f.Error))}";
+        });
+    }
 
     private int _pluginEventPending;
 
@@ -122,6 +370,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
             : rows.Where(r => r?.ToString()?.Contains(text, StringComparison.OrdinalIgnoreCase) == true);
 
     public ObservableCollection<MixerChannelViewModel> Mixer { get; } = [];
+    [ObservableProperty] private bool _hasMixerChannels;
     public IReadOnlyList<KeyValuePair<string, string>> Transitions { get; } = SetTransitionCommand.Available.ToList();
     public ObservableCollection<GraphicRowViewModel> Graphics { get; } = [];
     public IReadOnlyList<GraphicKindOption> GraphicKinds { get; } =
@@ -154,7 +403,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
     [ObservableProperty] private bool _studioMode;
     [ObservableProperty] private string _transitionId = "fade_transition";
     [ObservableProperty] private int _transitionDurationMs = 300;
-    [ObservableProperty] private bool _isStreaming;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StreamButtonText))]
+    private bool _isStreaming;
     [ObservableProperty] private bool _isRecording;
     [ObservableProperty] private bool _streamReconnecting;
     [ObservableProperty] private string _streamTime = "00:00:00";
@@ -284,6 +535,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
         }
     }
 
+    public void RefreshMixer() => RefreshMixer(EditSceneId is { } id ? Project.GetScene(id) : null);
+
     private void RefreshMixer(Scene? editScene)
     {
         // Canales globales y fuentes de audio de la escena de programa (lo que realmente suena), como en OBS.
@@ -308,10 +561,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
             channel.IsGlobal = source.GlobalAudioChannel > 0;
             channel.Syncing = false;
         }
+        HasMixerChannels = Mixer.Count > 0;
     }
 
-    private static bool HasAudio(Source s) =>
-        s.Kind is SourceKind.AudioInput or SourceKind.AudioOutput or SourceKind.Media or SourceKind.VideoCaptureDevice;
+    private static bool HasAudio(Source s) => s.HasActiveAudio;
 
     /// <summary>Actualiza una colección conservando las instancias existentes (y con ello la selección y el foco).</summary>
     private static void Sync<T>(ObservableCollection<T> target, IReadOnlyList<Guid> ids, Func<Guid, T> create, Func<T, Guid> key)
@@ -924,14 +1177,43 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
                     await StopStreamAsync(CancellationToken.None);
                 return;
             }
-            if (await Session.ValidateStreamAsync() is { } problem)
+
+            IEnumerable<StreamDestination> targets = SelectedStreamMode switch
             {
-                await Dialogs.InfoAsync("Transmisión", problem);
+                StreamOutputMode.Horizontal => DualStream.GetDestinationsFor(CompositionFormat.Horizontal),
+                StreamOutputMode.Vertical => DualStream.GetDestinationsFor(CompositionFormat.Vertical),
+                _ => Session.EnabledDestinations
+            };
+            var targetList = targets.Where(d => d.Enabled).ToList();
+            if (targetList.Count == 0)
+            {
+                var modeDesc = SelectedStreamMode switch
+                {
+                    StreamOutputMode.Horizontal => "horizontal (16:9)",
+                    StreamOutputMode.Vertical => "vertical (9:16)",
+                    _ => "dual (16:9 + 9:16)"
+                };
+                await Dialogs.InfoAsync("Transmisión", $"No hay destinos activos compatibles con el modo de emisión {modeDesc}.\n\nRevisa los destinos configurados en el panel «Destinos».");
                 return;
             }
-            var names = string.Join(", ", Session.EnabledDestinations.Select(d => d.Name));
-            if (await Dialogs.ConfirmAsync("Iniciar transmisión", $"Se emitirá en directo a: {names}. ¿Continuar?", "Transmitir"))
-                await StartStreamAsync(CancellationToken.None);
+
+            var names = string.Join(", ", targetList.Select(d => d.Name));
+            var (confirmTitle, confirmMsg) = SelectedStreamMode switch
+            {
+                StreamOutputMode.Horizontal => ("Iniciar emisión 16:9", $"Se emitirá en directo en formato Horizontal (16:9) a:\n{names}\n\n¿Continuar?"),
+                StreamOutputMode.Vertical => ("Iniciar emisión 9:16", $"Se emitirá en directo en formato Vertical (9:16) a:\n{names}\n\n¿Continuar?"),
+                _ => ("Iniciar emisión Dual simultánea", $"Se emitirá en directo en formato Dual (16:9 + 9:16) a:\n{names}\n\n¿Continuar?")
+            };
+
+            if (await Dialogs.ConfirmAsync(confirmTitle, confirmMsg, "Transmitir"))
+            {
+                if (SelectedStreamMode == StreamOutputMode.Horizontal)
+                    await StartHorizontalStreamAsync();
+                else if (SelectedStreamMode == StreamOutputMode.Vertical)
+                    await StartVerticalStreamAsync();
+                else
+                    await StartStreamAsync(CancellationToken.None);
+            }
         }
         catch (Exception ex)
         {

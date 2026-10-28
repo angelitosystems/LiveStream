@@ -32,6 +32,22 @@ public sealed class CanvasGeometryTests
         Assert.Equal(before.Y, after.Y, 6);
     }
 
+    [Theory]
+    [InlineData(1080, 1920, 900, 700)]   // lienzo vertical en contenedor horizontal
+    [InlineData(1920, 1080, 2000, 400)]  // contenedor ultra-ancho
+    [InlineData(1920, 1080, 480, 300)]   // contenedor pequeño en ambas dimensiones
+    public void ViewFit_PreservesAspectRatio_OnAnyContainerShape(int sw, int sh, int cw, int ch)
+    {
+        var view = ViewTransform.Fit(sw, sh, cw, ch);
+        // Fórmula s = min(Wc/Ws, Hc/Hs) y centrado en ambas dimensiones.
+        Assert.Equal(Math.Min((double)cw / sw, (double)ch / sh), view.Scale, 12);
+        Assert.Equal((cw - sw * view.Scale) / 2, view.OffsetX, 6);
+        Assert.Equal((ch - sh * view.Scale) / 2, view.OffsetY, 6);
+        // La esquina del lienzo queda siempre dentro del contenedor y encaja exactamente al lado opuesto.
+        Assert.InRange(view.ToView(new Point2(sw, sh)).X, 0, cw);
+        Assert.InRange(view.ToView(new Point2(sw, sh)).Y, 0, ch);
+    }
+
     [Fact]
     public void HitTest_ReturnsTopmostVisible_RespectingRotation()
     {

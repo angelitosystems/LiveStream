@@ -117,6 +117,15 @@ public static class CanvasGeometry
         return insideX && insideY ? Handle.Body : Handle.None;
     }
 
+    public static (double Left, double Center, double Right) ComputeVerticalGuideX(double canvasWidth, double canvasHeight)
+    {
+        var vWidth = canvasHeight * 9.0 / 16.0;
+        var left = Math.Round((canvasWidth - vWidth) / 2.0);
+        var right = Math.Round(left + vWidth);
+        var center = Math.Round(canvasWidth / 2.0);
+        return (left, center, right);
+    }
+
     private static bool Between(double v, double a, double b) => v >= Math.Min(a, b) && v <= Math.Max(a, b);
 }
 
@@ -135,8 +144,10 @@ public sealed class DragGesture
     private readonly int _canvasWidth;
     private readonly int _canvasHeight;
     private readonly IReadOnlyList<EditorItem> _others;
+    private readonly IReadOnlyList<double> _extraTargetsX;
+    private readonly IReadOnlyList<double> _extraTargetsY;
 
-    public DragGesture(EditorItem item, Handle handle, Point2 origin, int canvasWidth, int canvasHeight, IReadOnlyList<EditorItem> others)
+    public DragGesture(EditorItem item, Handle handle, Point2 origin, int canvasWidth, int canvasHeight, IReadOnlyList<EditorItem> others, IReadOnlyList<double>? extraTargetsX = null, IReadOnlyList<double>? extraTargetsY = null)
     {
         _start = item;
         _handle = handle;
@@ -144,6 +155,8 @@ public sealed class DragGesture
         _canvasWidth = canvasWidth;
         _canvasHeight = canvasHeight;
         _others = others.Where(o => o.Id != item.Id && o.Visible && o.HasSize).ToList();
+        _extraTargetsX = extraTargetsX ?? [];
+        _extraTargetsY = extraTargetsY ?? [];
     }
 
     public Guid ItemId => _start.Id;
@@ -260,18 +273,22 @@ public sealed class DragGesture
     }
 
     private IEnumerable<double> TargetsX() =>
-        new double[] { 0, _canvasWidth / 2.0, _canvasWidth }.Concat(_others.SelectMany(o =>
-        {
-            var (l, _, r, _) = CanvasGeometry.Bounds(o);
-            return new[] { l, (l + r) / 2, r };
-        }));
+        new double[] { 0, _canvasWidth / 2.0, _canvasWidth }
+            .Concat(_extraTargetsX)
+            .Concat(_others.SelectMany(o =>
+            {
+                var (l, _, r, _) = CanvasGeometry.Bounds(o);
+                return new[] { l, (l + r) / 2, r };
+            }));
 
     private IEnumerable<double> TargetsY() =>
-        new double[] { 0, _canvasHeight / 2.0, _canvasHeight }.Concat(_others.SelectMany(o =>
-        {
-            var (_, t, _, b) = CanvasGeometry.Bounds(o);
-            return new[] { t, (t + b) / 2, b };
-        }));
+        new double[] { 0, _canvasHeight / 2.0, _canvasHeight }
+            .Concat(_extraTargetsY)
+            .Concat(_others.SelectMany(o =>
+            {
+                var (_, t, _, b) = CanvasGeometry.Bounds(o);
+                return new[] { t, (t + b) / 2, b };
+            }));
 
     /// <summary>Menor corrección que alinea alguna de las referencias con algún objetivo dentro de la distancia.</summary>
     internal static (double Delta, double? Guide) BestSnap(IReadOnlyList<double> references, IEnumerable<double> targets, double distance)

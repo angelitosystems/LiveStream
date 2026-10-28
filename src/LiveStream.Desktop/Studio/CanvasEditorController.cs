@@ -42,6 +42,16 @@ public sealed class CanvasEditorController : IDisposable
         {
             if (e.PropertyName == nameof(MainViewModel.EngineReady) && _vm.EngineReady)
                 await EnsureDisplayAsync();
+            else if (e.PropertyName == nameof(MainViewModel.CanvasText) && _fit && _displayCreated)
+            {
+                // Cambio de resolución de salida: en modo "ajustar" la vista sigue al nuevo lienzo.
+                RecomputeFit();
+                await ApplyViewAsync();
+            }
+            else if (e.PropertyName is nameof(MainViewModel.IsVerticalFormatActive) or nameof(MainViewModel.SelectedStreamMode))
+            {
+                PushOverlay([], []);
+            }
         };
         // Los tamaños de las fuentes cambian solos (una cámara que arranca, una ventana redimensionada).
         _sizeTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background, async (_, _) => await RefreshSizesAsync());
@@ -244,7 +254,18 @@ public sealed class CanvasEditorController : IDisposable
 
     private void StartGesture(EditorItem item, Handle handle, Point2 point, IReadOnlyList<EditorItem> items)
     {
-        _gesture = new DragGesture(item, handle, point, _vm.Project.Canvas.Width, _vm.Project.Canvas.Height, items);
+        IReadOnlyList<double>? extraTargetsX = null;
+        if (_vm.IsVerticalFormatActive || _vm.SelectedStreamMode != StreamOutputMode.Horizontal)
+        {
+            var w = _vm.Project.Canvas.Width;
+            var h = _vm.Project.Canvas.Height;
+            if (w >= h)
+            {
+                var (left, center, right) = CanvasGeometry.ComputeVerticalGuideX(w, h);
+                extraTargetsX = [left, center, right];
+            }
+        }
+        _gesture = new DragGesture(item, handle, point, _vm.Project.Canvas.Width, _vm.Project.Canvas.Height, items, extraTargetsX);
         _lastLive = null;
     }
 
@@ -323,7 +344,23 @@ public sealed class CanvasEditorController : IDisposable
         if (!_displayCreated)
             return;
         var selected = _vm.SelectedItems.ToList();
-        _ = Safe(() => _vm.Engine.SetDisplayOverlayAsync(_displayId, selected, guidesX, guidesY));
+        var gx = new List<double>(guidesX);
+        var gy = new List<double>(guidesY);
+
+        if (_vm.IsVerticalFormatActive || _vm.SelectedStreamMode != StreamOutputMode.Horizontal)
+        {
+            var w = _vm.Project.Canvas.Width;
+            var h = _vm.Project.Canvas.Height;
+            if (w >= h)
+            {
+                var (left, center, right) = CanvasGeometry.ComputeVerticalGuideX(w, h);
+                if (!gx.Contains(left)) gx.Add(left);
+                if (!gx.Contains(center)) gx.Add(center);
+                if (!gx.Contains(right)) gx.Add(right);
+            }
+        }
+
+        _ = Safe(() => _vm.Engine.SetDisplayOverlayAsync(_displayId, selected, gx, gy));
     }
 
     private async Task<bool> Safe(Func<Task> action)

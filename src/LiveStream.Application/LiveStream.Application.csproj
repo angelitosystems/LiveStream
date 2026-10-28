@@ -1,5 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CS0067</NoWarn>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\LiveStream.Domain\LiveStream.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Speech" />
   </ItemGroup>
 </Project>

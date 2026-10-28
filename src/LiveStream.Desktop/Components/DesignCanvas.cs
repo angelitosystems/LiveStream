@@ -52,6 +52,18 @@ public sealed class DesignCanvas : Control
     public double GridSize { get; set; } = 20;
     /// <summary>Texto que se ve en un elemento (campos {x}, reloj, cuenta atrás).</summary>
     public Func<DesignElement, string>? TextOf { get; set; }
+    /// <summary>Vista previa de la animación en curso (misma reglas que el motor, evaluadas aquí).</summary>
+    private AnimationPreviewState? _preview;
+    private Rect _previewClipRect;
+
+    /// <summary>Establece la transformación de un clip de animación. state = null: estado de reposo normal.
+    /// clipRect: caja del gráfico en unidades de diseño (origen relativo al ancla del gráfico).</summary>
+    public void SetPreview(AnimationPreviewState? state, Rect clipRect)
+    {
+        _preview = state;
+        _previewClipRect = clipRect;
+        InvalidateVisual();
+    }
 
     /// <summary>El diseño cambió por una interacción. commit = false mientras se arrastra; true al soltar.</summary>
     public event Action<IReadOnlyList<DesignElement>, bool>? DesignChanged;
@@ -111,7 +123,17 @@ public sealed class DesignCanvas : Control
 
     // ---- Coordenadas ------------------------------------------------------------------------------
 
-    private double FitScale => Math.Max(0.01, Math.Min((Bounds.Width - 48) / CanvasSize.Width, (Bounds.Height - 48) / CanvasSize.Height));
+    private double FitScale
+    {
+        get
+        {
+            var availW = Math.Max(10, Bounds.Width - 32);
+            var availH = Math.Max(10, Bounds.Height - 32);
+            var sw = availW / Math.Max(1, CanvasSize.Width);
+            var sh = availH / Math.Max(1, CanvasSize.Height);
+            return Math.Max(0.01, Math.Min(sw, sh));
+        }
+    }
     private double Scale => FitScale * Zoom;
     private Point Offset => new Point((Bounds.Width - CanvasSize.Width * Scale) / 2, (Bounds.Height - CanvasSize.Height * Scale) / 2) + Pan;
 
@@ -149,8 +171,40 @@ public sealed class DesignCanvas : Control
             DrawChecker(context, canvas);
             if (ShowGrid && GridSize * Scale * GraphicScale >= 6)
                 DrawGrid(context, canvas);
-            foreach (var e in Design.Where(e => e.Visible))
-                DrawElement(context, e);
+
+            var drawing = Design.Where(e => e.Visible);
+            if (_preview is not { } p)
+            {
+                foreach (var e in drawing)
+                    DrawElement(context, e);
+            }
+            else
+            {
+                // Vista previa: escala sobre el ancla del gráfico + desplazamiento (px de lienzo),
+                // opacidad de la capa y desvelado (recorte del clip), igual que lo interpreta el motor.
+                var anchor = CanvasToScreen(Origin);
+                using (context.PushTransform(
+                           Matrix.CreateTranslation(anchor.X, anchor.Y)
+                           * Matrix.CreateScale(p.ScaleX, p.ScaleY)
+                           * Matrix.CreateTranslation(-anchor.X, -anchor.Y)
+                           * Matrix.CreateTranslation(p.Dx * Scale, p.Dy * Scale)))
+                using (context.PushOpacity(p.Opacity))
+                {
+                    var vis = new Rect(_previewClipRect.X, _previewClipRect.Y,
+                        Math.Max(0, _previewClipRect.Width - p.CropRight / GraphicScale),
+                        _previewClipRect.Height);
+                    var visScreen = new Rect(DesignToScreen(vis.X, vis.Y),
+                        new Size(vis.Width * GraphicScale * Scale, vis.Height * GraphicScale * Scale));
+                    if (p.CropRight <= 0)
+                        using (context.PushClip(canvas))
+                            foreach (var e in drawing)
+                                DrawElement(context, e);
+                    else
+                        using (context.PushClip(visScreen))
+                            foreach (var e in drawing)
+                                DrawElement(context, e);
+                }
+            }
         }
         context.DrawRectangle(null, new Pen(new SolidColorBrush(Color.Parse("#FF4A5060")), 1), canvas);
 

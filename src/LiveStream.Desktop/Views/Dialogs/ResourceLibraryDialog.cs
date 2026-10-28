@@ -39,6 +39,7 @@ public static class ResourceLibraryDialog
         var remove = new Button { Content = "Eliminar" };
         var use = Primary("Usar recurso");
         var cancel = new Button { Content = pick ? "Cancelar" : "Cerrar", IsCancel = true };
+        cancel.Click += (_, _) => window.Close();
         if (!pick)
             use.IsVisible = false;
         var error = new TextBlock { Foreground = Brushes.IndianRed, TextWrapping = TextWrapping.Wrap };

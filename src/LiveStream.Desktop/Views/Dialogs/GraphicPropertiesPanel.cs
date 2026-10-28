@@ -353,8 +353,17 @@ public sealed class GraphicPropertiesPanel : StackPanel
         return grid;
     }
 
-    private static Control Pair(Control left, Control right) =>
-        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { left, right } };
+    private static Control Pair(Control left, Control right)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 6, HorizontalAlignment = HorizontalAlignment.Stretch };
+        left.HorizontalAlignment = HorizontalAlignment.Stretch;
+        right.HorizontalAlignment = HorizontalAlignment.Stretch;
+        Grid.SetColumn(left, 0);
+        Grid.SetColumn(right, 1);
+        grid.Children.Add(left);
+        grid.Children.Add(right);
+        return grid;
+    }
 
     private static NumericUpDown Number(double value, double min, double max, double step, string format = "0") =>
         new()
@@ -364,8 +373,8 @@ public sealed class GraphicPropertiesPanel : StackPanel
             Maximum = (decimal)max,
             Increment = (decimal)step,
             FormatString = format,
-            MinWidth = 100,
-            HorizontalAlignment = HorizontalAlignment.Left,
+            MinWidth = 50,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
 
     /// <summary>Aplica al pulsar Enter o al salir del campo (cada aplicación es un paso de deshacer).</summary>

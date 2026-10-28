@@ -141,6 +141,20 @@ public sealed class OptimizationTests
         Assert.Null(ProfileAdvisor.Lighter(new CanvasSettings(1280, 720, 30)));
     }
 
+    [Fact]
+    public void BenchmarkStressPattern_GeneratesValidBmpFile()
+    {
+        var bytes = BenchmarkStressPattern.GenerateBmpBytes(960, 540);
+        Assert.NotNull(bytes);
+        Assert.True(bytes.Length > 54);
+        Assert.Equal(0x42, bytes[0]); // 'B'
+        Assert.Equal(0x4D, bytes[1]); // 'M'
+        var width = BitConverter.ToInt32(bytes.AsSpan(18, 4));
+        var height = BitConverter.ToInt32(bytes.AsSpan(22, 4));
+        Assert.Equal(960, width);
+        Assert.Equal(540, height);
+    }
+
     /// <summary>Sesión con destinos ya emitiendo en el motor falso.</summary>
     private static async Task<(StudioSession Session, FakeStreamingEngine Engine, string Dir, StreamDestination[] Destinations)> LiveAsync(
         bool dynamic, params EncoderSettings?[] encoders)

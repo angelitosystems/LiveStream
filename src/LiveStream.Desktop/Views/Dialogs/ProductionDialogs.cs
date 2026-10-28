@@ -8,8 +8,10 @@ using LiveStream.Application.Graphics;
 using LiveStream.Application.Scenes;
 using LiveStream.Desktop.Components;
 using LiveStream.Desktop.ViewModels;
+using LiveStream.Domain.Alerts;
 using LiveStream.Domain.Entities;
 using LiveStream.Domain.Graphics;
+using LiveStream.Domain.Tts;
 using LiveStream.Infrastructure.Persistence;
 using static LiveStream.Desktop.Views.Dialogs.StudioDialogs;
 
@@ -440,12 +442,106 @@ public static class ProductionDialogs
             .Where(e => engineTypes.Contains(e.TypeId) && (e.Audio ? hasAudio : !source.IsAudioOnly))
             .ToList();
 
-        var window = NewWindow($"Filtros — {source.Name}", 880, 600);
+        var window = NewWindow($"Filtros — {source.Name}", 1020, 720);
         var list = new ListBox { Classes = { "studioList" } };
         var editor = new PropertyEditor();
-        var placeholder = new TextBlock { Text = "Añade un filtro con + o selecciona uno para editarlo.", Classes = { "muted" }, TextWrapping = TextWrapping.Wrap };
+        var placeholder = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FF161920")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#FF262B34")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(24, 30),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    new TextBlock { Text = "✨", FontSize = 28, HorizontalAlignment = HorizontalAlignment.Center },
+                    new TextBlock
+                    {
+                        Text = "Añade un filtro con el botón «+» o selecciona uno de la lista para configurar sus parámetros.",
+                        Classes = { "muted" },
+                        FontSize = 12.5,
+                        TextWrapping = TextWrapping.Wrap,
+                        TextAlignment = TextAlignment.Center
+                    }
+                }
+            }
+        };
+
         var error = Error();
-        var editorHost = new ScrollViewer { Content = new StackPanel { Margin = new Thickness(16), Spacing = 10, Children = { placeholder, editor, error } } };
+
+        // Cabecera informativa del filtro seleccionado
+        var filterTitle = new TextBlock { FontWeight = FontWeight.Bold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+        var filterCategoryBadge = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FF1E2838")),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(6, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { FontSize = 10, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#FF93C5FD")) }
+        };
+        var filterDesc = new TextBlock { Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+        var filterInfoCard = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FF181C23")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#FF282D36")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 10),
+            IsVisible = false,
+            Child = new StackPanel
+            {
+                Spacing = 2,
+                Children =
+                {
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { filterTitle, filterCategoryBadge } },
+                    filterDesc
+                }
+            }
+        };
+
+        // Componentes de vista previa en tiempo real
+        LiveSourcePreview? preview = null;
+        AudioMeterControl? meter = null;
+
+        if (!source.IsAudioOnly)
+        {
+            preview = new LiveSourcePreview { Height = 220, Margin = new Thickness(0, 0, 0, 10) };
+            preview.Attach(vm, sourceId, allowCompare: true);
+        }
+
+        if (source.SupportsAudio)
+        {
+            meter = new AudioMeterControl { Margin = new Thickness(0, 0, 0, 10) };
+            meter.Attach(vm, sourceId);
+        }
+
+        var previewContainer = new StackPanel { Spacing = 0 };
+        if (preview is not null)
+            previewContainer.Children.Add(preview);
+        if (meter is not null)
+            previewContainer.Children.Add(meter);
+
+        var editorHost = new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 12,
+                Children =
+                {
+                    previewContainer,
+                    filterInfoCard,
+                    placeholder,
+                    editor,
+                    error
+                }
+            }
+        };
 
         Guid? editing = null;
         string? baseline = null; // ajustes del motor al empezar a editar el filtro seleccionado
@@ -491,9 +587,16 @@ public static class ProductionDialogs
         async Task SelectAsync(Guid id)
         {
             editing = id;
+            var filter = source.GetFilter(id);
+            var entry = FilterCatalog.Find(filter.TypeId);
+            filterTitle.Text = filter.Name;
+            ((TextBlock)filterCategoryBadge.Child!).Text = entry is not null ? FilterCatalog.CategoryName(entry.Category) : "Filtro";
+            filterDesc.Text = entry?.Description ?? "";
+            filterInfoCard.IsVisible = true;
+
             var settingsJson = await vm.Engine.GetSourceSettingsAsync(id, CancellationToken.None);
             baseline ??= settingsJson;
-            previous ??= source.GetFilter(id).SettingsJson;
+            previous ??= filter.SettingsJson;
             var properties = await vm.Engine.GetSourcePropertiesAsync(id, CancellationToken.None);
             editor.Build(properties, JsonNode.Parse(settingsJson) as JsonObject ?? [], vm.Dialogs);
             placeholder.IsVisible = false;
@@ -504,7 +607,8 @@ public static class ProductionDialogs
             var rows = source.Filters.Select(f =>
             {
                 var check = new CheckBox { IsChecked = f.Enabled, Content = f.Name, Tag = f.Id };
-                ToolTip.SetTip(check, FilterCatalog.Find(f.TypeId)?.Name ?? f.TypeId);
+                var catEntry = FilterCatalog.Find(f.TypeId);
+                ToolTip.SetTip(check, $"{catEntry?.Name ?? f.TypeId} — {catEntry?.Description ?? ""}");
                 check.IsCheckedChanged += async (_, _) =>
                 {
                     if (check.IsChecked != f.Enabled)
@@ -518,6 +622,7 @@ public static class ProductionDialogs
             {
                 editing = null;
                 placeholder.IsVisible = true;
+                filterInfoCard.IsVisible = false;
                 editor.Build([], [], vm.Dialogs);
             }
         }
@@ -531,14 +636,29 @@ public static class ProductionDialogs
             await SelectAsync(id);
         };
 
+        // Menú categorizado de añadir filtros
         var addMenu = new MenuFlyout();
-        foreach (var group in offered.GroupBy(e => e.Audio))
+        var categoryGroups = new[]
         {
-            if (addMenu.Items.Count > 0)
-                addMenu.Items.Add(new Separator());
-            foreach (var entry in group)
+            FilterCategory.Audio,
+            FilterCategory.ColorCorrection,
+            FilterCategory.KeyingAndBackground,
+            FilterCategory.MasksAndCrop,
+            FilterCategory.CreativeEffects,
+            FilterCategory.Utility
+        };
+
+        foreach (var cat in categoryGroups)
+        {
+            var inCat = offered.Where(e => e.Category == cat).ToList();
+            if (inCat.Count == 0)
+                continue;
+
+            var catSub = new MenuItem { Header = FilterCatalog.CategoryName(cat) };
+            foreach (var entry in inCat)
             {
                 var item = new MenuItem { Header = entry.Name };
+                ToolTip.SetTip(item, entry.Description);
                 item.Click += async (_, _) =>
                 {
                     await CommitAsync();
@@ -548,20 +668,24 @@ public static class ProductionDialogs
                     if (result.Success)
                         Reload(command.FilterId);
                 };
-                addMenu.Items.Add(item);
+                catSub.Items.Add(item);
             }
+            addMenu.Items.Add(catSub);
         }
+
         Button IconButton(string icon, string tip)
         {
-            var b = new Button { Classes = { "icon" }, Content = new PathIcon { Data = (Geometry)Avalonia.Application.Current!.FindResource(icon)! } };
+            var b = new Button { Classes = { "icon" }, Content = new Glyph { Data = (Geometry)Avalonia.Application.Current!.FindResource(icon)! } };
             ToolTip.SetTip(b, tip);
             Avalonia.Automation.AutomationProperties.SetName(b, tip);
             return b;
         }
+
         var add = IconButton("Icon.Plus", "Añadir filtro");
         add.Flyout = addMenu;
         add.IsEnabled = offered.Count > 0;
-        var remove = IconButton("Icon.Trash", "Eliminar filtro");
+
+        var remove = IconButton("Icon.Trash", "Eliminar filtro seleccionado");
         remove.Click += async (_, _) =>
         {
             if (editing is not { } id)
@@ -572,8 +696,9 @@ public static class ProductionDialogs
             await vm.Run(new RemoveFilterCommand(sourceId, id));
             Reload();
         };
-        var up = IconButton("Icon.Up", "Antes en la cadena");
-        var down = IconButton("Icon.Down", "Después en la cadena");
+
+        var up = IconButton("Icon.Up", "Subir en la cadena de filtros");
+        var down = IconButton("Icon.Down", "Bajar en la cadena de filtros");
         async Task Move(int delta)
         {
             if (editing is not { } id)
@@ -585,30 +710,182 @@ public static class ProductionDialogs
         up.Click += async (_, _) => await Move(-1);
         down.Click += async (_, _) => await Move(+1);
 
-        var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Children = { add, remove, up, down } };
+        var duplicate = IconButton("Icon.Copy", "Duplicar filtro seleccionado con sus ajustes");
+        duplicate.Click += async (_, _) =>
+        {
+            if (editing is not { } id)
+                return;
+            await CommitAsync();
+            var f = source.Filters.FirstOrDefault(filt => filt.Id == id);
+            if (f is null)
+                return;
+            var command = new DuplicateFilterCommand(sourceId, id, NextFilterName(source, f.Name));
+            var result = await vm.Run(command);
+            error.Text = result.Success ? "" : result.Error;
+            if (result.Success)
+                Reload(command.NewFilterId);
+        };
+
+        // Menú de preajustes y portapapeles
+        var presetsMenu = new MenuFlyout();
+        var recSubMenu = new MenuItem { Header = "⭐ Cadenas predefinidas recomendadas" };
+        var sourcePresets = FilterPresetStore.GetPresetsForSource(source.IsAudioOnly);
+        foreach (var preset in sourcePresets)
+        {
+            var pItem = new MenuItem { Header = preset.Name };
+            ToolTip.SetTip(pItem, preset.Description);
+            var localPreset = preset;
+            pItem.Click += async (_, _) =>
+            {
+                if (await vm.Dialogs.ConfirmAsync("Aplicar preajuste", $"¿Deseas añadir la cadena «{localPreset.Name}» ({localPreset.Filters.Count} filtros)?"))
+                {
+                    await CommitAsync();
+                    foreach (var pf in localPreset.Filters)
+                    {
+                        if (engineTypes.Contains(pf.TypeId))
+                        {
+                            var cmd = new AddFilterCommand(sourceId, pf.TypeId, NextFilterName(source, pf.Name), pf.SettingsJson);
+                            await vm.Run(cmd);
+                        }
+                    }
+                    Reload();
+                }
+            };
+            recSubMenu.Items.Add(pItem);
+        }
+        if (recSubMenu.Items.Count > 0)
+            presetsMenu.Items.Add(recSubMenu);
+
+        presetsMenu.Items.Add(new Separator());
+
+        var copyFiltersItem = new MenuItem { Header = "Copiar filtros al portapapeles" };
+        copyFiltersItem.Click += async (_, _) =>
+        {
+            await CommitAsync();
+            if (source.Filters.Count == 0)
+            {
+                error.Text = "No hay filtros para copiar.";
+                return;
+            }
+            var items = source.Filters.Select(f => new FilterPresetItem(f.Name, f.TypeId, f.SettingsJson, f.Enabled)).ToList();
+            var json = FilterPresetStore.ExportFiltersToJson(items);
+            if (window.Clipboard is { } cb)
+            {
+                await cb.SetTextAsync(json);
+                error.Text = $"Copiados {items.Count} filtros al portapapeles.";
+            }
+        };
+        presetsMenu.Items.Add(copyFiltersItem);
+
+        var pasteFiltersItem = new MenuItem { Header = "Pegar filtros desde el portapapeles" };
+        pasteFiltersItem.Click += async (_, _) =>
+        {
+            if (window.Clipboard is { } cb && await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(cb) is { } text)
+            {
+                var imported = FilterPresetStore.ImportFiltersFromJson(text);
+                if (imported is { Count: > 0 })
+                {
+                    await CommitAsync();
+                    var count = 0;
+                    foreach (var item in imported)
+                    {
+                        if (engineTypes.Contains(item.TypeId))
+                        {
+                            var cmd = new AddFilterCommand(sourceId, item.TypeId, NextFilterName(source, item.Name), item.SettingsJson);
+                            var res = await vm.Run(cmd);
+                            if (res.Success) count++;
+                        }
+                    }
+                    Reload();
+                    error.Text = $"Se pegaron {count} filtros correctamente.";
+                }
+                else
+                {
+                    error.Text = "El portapapeles no contiene una cadena de filtros válida.";
+                }
+            }
+        };
+        presetsMenu.Items.Add(pasteFiltersItem);
+
+        var savePresetItem = new MenuItem { Header = "Guardar filtros como preajuste..." };
+        savePresetItem.Click += async (_, _) =>
+        {
+            await CommitAsync();
+            if (source.Filters.Count == 0)
+            {
+                error.Text = "No hay filtros para guardar como preajuste.";
+                return;
+            }
+            if (await vm.Dialogs.PromptAsync("Guardar preajuste", "Nombre para esta cadena de filtros:", $"{source.Name} Cadena") is { } pName && !string.IsNullOrWhiteSpace(pName))
+            {
+                var items = source.Filters.Select(f => new FilterPresetItem(f.Name, f.TypeId, f.SettingsJson, f.Enabled)).ToList();
+                FilterPresetStore.SaveCustomPreset(pName.Trim(), "Preajuste guardado por el usuario", source.IsAudioOnly, items);
+                error.Text = $"Preajuste «{pName.Trim()}» guardado.";
+            }
+        };
+        presetsMenu.Items.Add(savePresetItem);
+
+        var presetsBtn = new Button
+        {
+            Content = "Preajustes",
+            Padding = new Thickness(8, 4),
+            Flyout = presetsMenu,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var resetBtn = new Button
+        {
+            Content = "Restablecer ajustes",
+            Classes = { "ghost" },
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        resetBtn.Click += async (_, _) =>
+        {
+            if (editing is not { } id)
+                return;
+            var f = source.Filters.FirstOrDefault(filt => filt.Id == id);
+            if (f is null || FilterCatalog.Find(f.TypeId) is not { } entry)
+                return;
+            await vm.Run(new UpdateFilterSettingsCommand(sourceId, id, entry.DefaultSettingsJson));
+            baseline = null;
+            await SelectAsync(id);
+            error.Text = "Ajustes restablecidos a valores predeterminados.";
+        };
+
+        var toolbar = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            Children = { add, remove, up, down, duplicate, presetsBtn }
+        };
+
         var left = new DockPanel { Margin = new Thickness(8) };
         DockPanel.SetDock(toolbar, Dock.Top);
         left.Children.Add(toolbar);
         left.Children.Add(new TextBlock
         {
             Text = hasAudio && source.IsAudioOnly
-                ? "El orden importa: la señal pasa de arriba abajo (p. ej. puerta de ruido → supresión → compresor → limitador)."
-                : "Los filtros se aplican en orden, de arriba abajo. La casilla activa o desactiva cada uno.",
+                ? "El orden importa: la señal se procesa de arriba abajo (p. ej. Puerta de ruido → Supresión RNNoise → Compresor → Limitador)."
+                : "Los filtros se aplican en orden descendente. La casilla activa o desactiva cada filtro en tiempo real.",
             Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 8),
             [DockPanel.DockProperty] = Dock.Bottom,
         });
         left.Children.Add(list);
 
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("280,*") };
+        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("310,*") };
         body.Children.Add(new Border { Child = left, Background = new SolidColorBrush(Color.Parse("#FF17191D")) });
         body.Children.Add(WithColumn(editorHost, 1));
 
         var close = Primary("Cerrar");
         close.Click += (_, _) => window.Close();
-        window.Content = Layout(body, close);
+        window.Content = Layout(body, resetBtn, close);
         Reload();
+
         await window.ShowDialog(owner);
         await CommitAsync();
+        meter?.Dispose();
+        if (preview is not null)
+            await preview.DisposeAsync();
     }
 
     private static string NextFilterName(Source source, string baseName)
@@ -788,6 +1065,488 @@ public static class ProductionDialogs
         var cancel = new Button { Content = "Cancelar", IsCancel = true };
         cancel.Click += (_, _) => window.Close();
         window.Content = Layout(body, cancel, ok);
+        await window.ShowDialog(owner);
+    }
+
+    // ---- Ajustes de Lectura por Voz (TTS) --------------------------------------------------------
+
+    public static async Task ShowTtsSettingsAsync(MainViewModel vm)
+    {
+        if (vm.Dialogs.Owner is not { } owner)
+            return;
+
+        var tts = vm.Tts;
+        await tts.LoadVoicesAsync();
+
+        var window = NewWindow("Lectura de chat por voz (TTS)", 780, 680);
+
+        // Control maestro
+        var enabledCheck = new CheckBox { Content = "Activar síntesis de voz (TTS)", IsChecked = tts.Enabled };
+        enabledCheck.IsCheckedChanged += (_, _) => tts.Enabled = enabledCheck.IsChecked == true;
+
+        var autoReadCheck = new CheckBox { Content = "Leer automáticamente mensajes entrantes del chat", IsChecked = tts.AutoRead };
+        autoReadCheck.IsCheckedChanged += (_, _) => tts.AutoRead = autoReadCheck.IsChecked == true;
+
+        var muteBtn = new Button { Content = tts.IsMuted ? "Quitar silencio" : "Silenciar audio TTS" };
+        muteBtn.Click += (_, _) =>
+        {
+            tts.ToggleMuteCommand.Execute(null);
+            muteBtn.Content = tts.IsMuted ? "Quitar silencio" : "Silenciar audio TTS";
+        };
+
+        var skipBtn = new Button { Content = "Saltar actual" };
+        skipBtn.Click += (_, _) => tts.SkipCommand.Execute(null);
+
+        var pauseBtn = new Button { Content = tts.IsPaused ? "Reanudar" : "Pausar" };
+        pauseBtn.Click += async (_, _) =>
+        {
+            await tts.TogglePauseCommand.ExecuteAsync(null);
+            pauseBtn.Content = tts.IsPaused ? "Reanudar" : "Pausar";
+        };
+
+        var clearBtn = new Button { Content = "Vaciar cola" };
+        clearBtn.Click += (_, _) => tts.ClearQueueCommand.Execute(null);
+
+        // Voces disponibles
+        var voiceCombo = new ComboBox
+        {
+            ItemsSource = tts.AvailableVoices,
+            SelectedItem = tts.SelectedVoice,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        voiceCombo.SelectionChanged += (_, _) =>
+        {
+            if (voiceCombo.SelectedItem is TtsVoice v)
+                tts.SelectedVoice = v;
+        };
+
+        // Volumen y velocidad
+        var volSlider = new Slider { Minimum = 0, Maximum = 100, Value = tts.Volume, SmallChange = 5, LargeChange = 10, Width = 160 };
+        var volLabel = new TextBlock { Text = $"{tts.Volume}%", Width = 45, VerticalAlignment = VerticalAlignment.Center };
+        volSlider.ValueChanged += (_, _) =>
+        {
+            var val = (int)volSlider.Value;
+            tts.Volume = val;
+            volLabel.Text = $"{val}%";
+        };
+
+        var rateSlider = new Slider { Minimum = -10, Maximum = 10, Value = tts.Rate, SmallChange = 1, LargeChange = 2, Width = 160 };
+        var rateLabel = new TextBlock { Text = $"{tts.Rate}", Width = 45, VerticalAlignment = VerticalAlignment.Center };
+        rateSlider.ValueChanged += (_, _) =>
+        {
+            var val = (int)rateSlider.Value;
+            tts.Rate = val;
+            rateLabel.Text = val > 0 ? $"+{val}" : $"{val}";
+        };
+
+        var pitchSlider = new Slider { Minimum = -10, Maximum = 10, Value = tts.Pitch, SmallChange = 1, LargeChange = 2, Width = 160 };
+        var pitchLabel = new TextBlock { Text = $"{tts.Pitch}", Width = 45, VerticalAlignment = VerticalAlignment.Center };
+        pitchSlider.ValueChanged += (_, _) =>
+        {
+            var val = (int)pitchSlider.Value;
+            tts.Pitch = val;
+            pitchLabel.Text = val > 0 ? $"+{val}" : $"{val}";
+        };
+
+        var maxLenNum = Number(tts.MaxLength, 30, 500, 10);
+        maxLenNum.ValueChanged += (_, _) =>
+        {
+            if (maxLenNum.Value is { } v)
+                tts.MaxLength = (int)v;
+        };
+
+        // Selector de modo de acción al pulsar un comentario
+        var clickActionCombo = new ComboBox
+        {
+            ItemsSource = new[]
+            {
+                "Solo leer en voz alta con TTS",
+                "Solo mostrar alerta en pantalla (fijar)",
+                "Mostrar en pantalla y leer simultáneamente",
+                "Mostrar en pantalla solo después de que se leyó por voz",
+                "Leer por voz solo después de que se mostró en pantalla"
+            },
+            SelectedIndex = (int)tts.ClickAction,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        clickActionCombo.SelectionChanged += (_, _) =>
+        {
+            if (clickActionCombo.SelectedIndex >= 0)
+                tts.ClickAction = (ChatClickAction)clickActionCombo.SelectedIndex;
+        };
+
+        // Frase de prueba
+        var testBox = new TextBox { Text = tts.TestPhrase, HorizontalAlignment = HorizontalAlignment.Stretch };
+        testBox.TextChanged += (_, _) => tts.TestPhrase = testBox.Text ?? "";
+
+        var testBtn = new Button { Content = "Probar voz", Margin = new Thickness(8, 0, 0, 0) };
+        testBtn.Click += (_, _) => tts.TestSpeakCommand.Execute(null);
+
+        var testRow = new DockPanel { Children = { testBtn, testBox } };
+        DockPanel.SetDock(testBtn, Dock.Right);
+
+        // Selector de voces por plataforma
+        ComboBox CreatePlatformVoiceCombo(TtsVoice? initial, Action<TtsVoice?> onSelected)
+        {
+            var cb = new ComboBox
+            {
+                ItemsSource = tts.AvailableVoices,
+                SelectedItem = initial,
+                Width = 220,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            cb.SelectionChanged += (_, _) => onSelected(cb.SelectedItem as TtsVoice);
+            return cb;
+        }
+
+        var ytVoiceCombo = CreatePlatformVoiceCombo(tts.SelectedYouTubeVoice, v => tts.SelectedYouTubeVoice = v);
+        var ttVoiceCombo = CreatePlatformVoiceCombo(tts.SelectedTikTokVoice, v => tts.SelectedTikTokVoice = v);
+        var twVoiceCombo = CreatePlatformVoiceCombo(tts.SelectedTwitchVoice, v => tts.SelectedTwitchVoice = v);
+        var fbVoiceCombo = CreatePlatformVoiceCombo(tts.SelectedFacebookVoice, v => tts.SelectedFacebookVoice = v);
+
+        // Reglas de plataformas
+        var ytCheck = new CheckBox { Content = "YouTube Live", IsChecked = tts.YoutubeEnabled };
+        ytCheck.IsCheckedChanged += (_, _) => tts.YoutubeEnabled = ytCheck.IsChecked == true;
+        var ytRow = new DockPanel { Children = { ytVoiceCombo, ytCheck } };
+        DockPanel.SetDock(ytVoiceCombo, Dock.Right);
+
+        var ttCheck = new CheckBox { Content = "TikTok LIVE", IsChecked = tts.TiktokEnabled };
+        ttCheck.IsCheckedChanged += (_, _) => tts.TiktokEnabled = ttCheck.IsChecked == true;
+        var ttRow = new DockPanel { Children = { ttVoiceCombo, ttCheck } };
+        DockPanel.SetDock(ttVoiceCombo, Dock.Right);
+
+        var twCheck = new CheckBox { Content = "Twitch", IsChecked = tts.TwitchEnabled };
+        twCheck.IsCheckedChanged += (_, _) => tts.TwitchEnabled = twCheck.IsChecked == true;
+        var twRow = new DockPanel { Children = { twVoiceCombo, twCheck } };
+        DockPanel.SetDock(twVoiceCombo, Dock.Right);
+
+        var twSubsCheck = new CheckBox { Content = "Solo suscriptores en Twitch", IsChecked = tts.TwitchSubsOnly, Margin = new Thickness(24, 0, 0, 0) };
+        twSubsCheck.IsCheckedChanged += (_, _) => tts.TwitchSubsOnly = twSubsCheck.IsChecked == true;
+
+        var fbCheck = new CheckBox { Content = "Facebook Live", IsChecked = tts.FacebookEnabled };
+        fbCheck.IsCheckedChanged += (_, _) => tts.FacebookEnabled = fbCheck.IsChecked == true;
+        var fbRow = new DockPanel { Children = { fbVoiceCombo, fbCheck } };
+        DockPanel.SetDock(fbVoiceCombo, Dock.Right);
+
+        // Control de sonido de alertas globales
+        var soundAlertCheck = new CheckBox { Content = "Sonidos acústicos de alertas globales habilitados", IsChecked = !vm.Alerts.IsSoundMuted };
+        soundAlertCheck.IsCheckedChanged += (_, _) => vm.Alerts.IsSoundMuted = soundAlertCheck.IsChecked != true;
+
+        // Visualización de estado actual
+        var nowPlayingBorder = new Border
+        {
+            Background = Brush.Parse("#FF1E293B"),
+            BorderBrush = Brush.Parse("#FF3B82F6"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12),
+        };
+        var nowPlayingTitle = new TextBlock { Text = "En reproducción:", FontWeight = FontWeight.Bold, Foreground = Brush.Parse("#FF93C5FD") };
+        var nowPlayingBody = new TextBlock { Text = tts.CurrentText ?? "(Ningún mensaje en lectura actualmente)", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+        nowPlayingBorder.Child = new StackPanel { Spacing = 4, Children = { nowPlayingTitle, nowPlayingBody } };
+
+        tts.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(tts.CurrentText) || e.PropertyName == nameof(tts.IsPlaying))
+            {
+                nowPlayingBody.Text = tts.IsPlaying && !string.IsNullOrEmpty(tts.CurrentText)
+                    ? $"[{tts.CurrentPlatform}] {tts.CurrentAuthor}: {tts.CurrentText}"
+                    : "(Ningún mensaje en lectura actualmente)";
+            }
+        };
+
+        var mainTab = new StackPanel
+        {
+            Spacing = 12,
+            Margin = new Thickness(16),
+            Children =
+            {
+                Section("Control de reproducción y estado"),
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { enabledCheck, autoReadCheck } },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { pauseBtn, skipBtn, muteBtn, clearBtn } },
+                nowPlayingBorder,
+
+                Section("Voz y entonación"),
+                Form(
+                    ("Voz principal instalada", voiceCombo),
+                    ("Volumen", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { volSlider, volLabel } }),
+                    ("Velocidad", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { rateSlider, rateLabel } }),
+                    ("Tono acústico (Pitch)", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { pitchSlider, pitchLabel } }),
+                    ("Límite de caracteres", maxLenNum),
+                    ("Acción al pulsar comentario", clickActionCombo),
+                    ("Frase de prueba", testRow)
+                ),
+
+                Section("Filtros y voces por plataforma"),
+                new TextBlock { Text = "Asigna una voz personalizada independiente por red social o usa la voz principal:", Classes = { "muted" }, FontSize = 11 },
+                new StackPanel { Spacing = 6, Children = { ytRow, ttRow, twRow, twSubsCheck, fbRow } },
+
+                Section("Sonidos acústicos de alertas"),
+                soundAlertCheck
+            }
+        };
+
+        var queueList = new ListBox
+        {
+            ItemsSource = tts.QueueItems,
+            MinHeight = 220,
+            ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<TtsUtterance>((utterance, _) =>
+            {
+                var panel = new DockPanel { Margin = new Thickness(4) };
+                var del = new Button { Content = "Quitar", Padding = new Thickness(6, 2) };
+                DockPanel.SetDock(del, Dock.Right);
+                del.Click += (_, _) => tts.RemoveQueueItem(utterance);
+                var text = new TextBlock
+                {
+                    Text = $"[{(utterance.IsManual ? "Manual" : utterance.Platform?.ToString() ?? "Estudio")}] {utterance.Author ?? "Anónimo"}: {utterance.Text}",
+                    TextWrapping = TextWrapping.Wrap,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                panel.Children.Add(del);
+                panel.Children.Add(text);
+                return panel;
+            }),
+        };
+
+        var queueTab = new StackPanel
+        {
+            Spacing = 12,
+            Margin = new Thickness(16),
+            Children =
+            {
+                new TextBlock { Text = "Cola de mensajes pendientes de lectura por voz:", Classes = { "muted" } },
+                queueList,
+            }
+        };
+
+        var tabs = new TabControl();
+        tabs.Items.Add(new TabItem { Header = "Ajustes de voz y filtros", Content = new ScrollViewer { Content = mainTab } });
+        tabs.Items.Add(new TabItem { Header = "Cola de reproducción", Content = new ScrollViewer { Content = queueTab } });
+
+        var close = Primary("Cerrar");
+        close.Click += (_, _) => window.Close();
+        window.Content = Layout(tabs, close);
+        await window.ShowDialog(owner);
+    }
+
+    // ---- Alertas de Donaciones, Regalos y Puntos de Canal ----------------------------------------
+
+    public static async Task ShowMonetaryAlertsAsync(MainViewModel vm)
+    {
+        if (vm.Dialogs.Owner is not { } owner)
+            return;
+
+        var alertsVm = vm.MonetaryAlerts;
+        alertsVm.RefreshRules();
+        alertsVm.RefreshHistory();
+
+        var window = NewWindow("Donaciones, regalos y recompensas", 840, 680);
+
+        // Lista de reglas a la izquierda
+        var rulesList = new ListBox
+        {
+            ItemsSource = alertsVm.Rules,
+            SelectedItem = alertsVm.SelectedRule,
+            Width = 240,
+            ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<MonetaryAlertRule>((rule, _) =>
+                new TextBlock { Text = $"{rule.Name} ({rule.Platform} - {rule.Kind})" }),
+        };
+        rulesList.SelectionChanged += (_, _) =>
+        {
+            if (rulesList.SelectedItem is MonetaryAlertRule r)
+                alertsVm.SelectedRule = r;
+        };
+
+        var addRuleBtn = new Button { Content = "Nueva regla", HorizontalAlignment = HorizontalAlignment.Stretch };
+        addRuleBtn.Click += (_, _) =>
+        {
+            alertsVm.RuleName = "Nueva regla " + (alertsVm.Rules.Count + 1);
+            alertsVm.RuleMinAmount = 5.0m;
+            alertsVm.RuleSpeechTemplate = "¡Muchas gracias {username} por tu apoyo de {amount} {currency}!";
+            alertsVm.SaveCurrentRule();
+        };
+
+        var delRuleBtn = new Button { Content = "Eliminar regla", HorizontalAlignment = HorizontalAlignment.Stretch };
+        delRuleBtn.Click += (_, _) => alertsVm.DeleteCurrentRule();
+
+        var testRuleBtn = Primary("Probar alerta en directo");
+        testRuleBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
+        testRuleBtn.Click += (_, _) => alertsVm.TestCurrentAlert();
+
+        var leftBar = new DockPanel
+        {
+            Children =
+            {
+                new StackPanel { Spacing = 6, Children = { addRuleBtn, delRuleBtn, testRuleBtn }, Margin = new Thickness(0, 8, 0, 0) },
+                rulesList
+            }
+        };
+        DockPanel.SetDock(leftBar.Children[0], Dock.Bottom);
+
+        // Editor de regla a la derecha
+        var nameBox = new TextBox { Text = alertsVm.RuleName };
+        nameBox.TextChanged += (_, _) => alertsVm.RuleName = nameBox.Text ?? "";
+
+        var platformCombo = new ComboBox
+        {
+            ItemsSource = Enum.GetValues<StreamPlatform>(),
+            SelectedItem = alertsVm.RulePlatform,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Width = 160,
+        };
+        platformCombo.SelectionChanged += (_, _) =>
+        {
+            if (platformCombo.SelectedItem is StreamPlatform p) alertsVm.RulePlatform = p;
+        };
+
+        var kindCombo = new ComboBox
+        {
+            ItemsSource = Enum.GetValues<AlertKind>(),
+            SelectedItem = alertsVm.RuleKind,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Width = 160,
+        };
+        kindCombo.SelectionChanged += (_, _) =>
+        {
+            if (kindCombo.SelectedItem is AlertKind k) alertsVm.RuleKind = k;
+        };
+
+        var minAmountNum = Number((double)alertsVm.RuleMinAmount, 0, 100000, 1, "0.##");
+        minAmountNum.ValueChanged += (_, _) =>
+        {
+            if (minAmountNum.Value is { } v) alertsVm.RuleMinAmount = (decimal)v;
+        };
+
+        var currBox = new TextBox { Text = alertsVm.RuleCurrency, Width = 100, HorizontalAlignment = HorizontalAlignment.Left };
+        currBox.TextChanged += (_, _) => alertsVm.RuleCurrency = currBox.Text ?? "";
+
+        var tplBox = new TextBox
+        {
+            Text = alertsVm.RuleSpeechTemplate,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Height = 80,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        tplBox.TextChanged += (_, _) => alertsVm.RuleSpeechTemplate = tplBox.Text ?? "";
+
+        var enabledCheck = new CheckBox { Content = "Regla activada", IsChecked = alertsVm.RuleEnabled };
+        enabledCheck.IsCheckedChanged += (_, _) => alertsVm.RuleEnabled = enabledCheck.IsChecked == true;
+
+        var saveRuleBtn = Primary("Guardar regla");
+        saveRuleBtn.Click += (_, _) => alertsVm.SaveCurrentRule();
+
+        alertsVm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(alertsVm.SelectedRule))
+            {
+                nameBox.Text = alertsVm.RuleName;
+                platformCombo.SelectedItem = alertsVm.RulePlatform;
+                kindCombo.SelectedItem = alertsVm.RuleKind;
+                minAmountNum.Value = (decimal)alertsVm.RuleMinAmount;
+                currBox.Text = alertsVm.RuleCurrency;
+                tplBox.Text = alertsVm.RuleSpeechTemplate;
+                enabledCheck.IsChecked = alertsVm.RuleEnabled;
+            }
+        };
+
+        var rightEditor = new StackPanel
+        {
+            Spacing = 10,
+            Margin = new Thickness(12, 0, 0, 0),
+            Children =
+            {
+                Section("Propiedades de la regla seleccionada"),
+                Form(
+                    ("Nombre descriptivo", nameBox),
+                    ("Plataforma", platformCombo),
+                    ("Tipo de evento monetario", kindCombo),
+                    ("Importe o unidades mínimas", minAmountNum),
+                    ("Código de divisa o unidad", currBox),
+                    ("Plantilla de voz (TTS)", tplBox)
+                ),
+                new TextBlock
+                {
+                    Text = "Variables disponibles en la plantilla: {username}, {amount}, {currency}, {gift_name}, {gift_count}, {message}",
+                    Classes = { "muted" },
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                enabledCheck,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 10, 0, 0), Children = { saveRuleBtn } }
+            }
+        };
+
+        var rulesGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("250,*"),
+            Margin = new Thickness(12),
+        };
+        Grid.SetColumn(leftBar, 0);
+        Grid.SetColumn(rightEditor, 1);
+        rulesGrid.Children.Add(leftBar);
+        rulesGrid.Children.Add(rightEditor);
+
+        // Pestaña 2: Puntos de canal
+        var pointsCheck = new CheckBox { Content = "Activar sistema de puntos virtuales de canal", IsChecked = alertsVm.PointsEnabled };
+        pointsCheck.IsCheckedChanged += (_, _) => alertsVm.PointsEnabled = pointsCheck.IsChecked == true;
+
+        var pointNameBox = new TextBox { Text = alertsVm.PointName, Width = 180, HorizontalAlignment = HorizontalAlignment.Left };
+        pointNameBox.TextChanged += (_, _) => alertsVm.PointName = pointNameBox.Text ?? "";
+
+        var ptsPerCurr = Number((double)alertsVm.PointsPerCurrency, 0, 10000, 10);
+        ptsPerCurr.ValueChanged += (_, _) => { if (ptsPerCurr.Value is { } v) alertsVm.PointsPerCurrency = (decimal)v; };
+
+        var ptsPerSub = Number(alertsVm.PointsPerSub, 0, 100000, 50);
+        ptsPerSub.ValueChanged += (_, _) => { if (ptsPerSub.Value is { } v) alertsVm.PointsPerSub = (int)v; };
+
+        var ptsPerGift = Number(alertsVm.PointsPerGift, 0, 100000, 10);
+        ptsPerGift.ValueChanged += (_, _) => { if (ptsPerGift.Value is { } v) alertsVm.PointsPerGift = (int)v; };
+
+        var historyList = new ListBox
+        {
+            ItemsSource = alertsVm.PointsHistory,
+            MinHeight = 220,
+            ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<VirtualPointsEntry>((entry, _) =>
+                new TextBlock
+                {
+                    Text = $"{entry.Timestamp:HH:mm:ss} — +{entry.PointsAwarded} {alertsVm.PointName} para {entry.Username} ({entry.Platform}) por {entry.Reason}",
+                    VerticalAlignment = VerticalAlignment.Center,
+                }),
+        };
+
+        var pointsTab = new StackPanel
+        {
+            Spacing = 12,
+            Margin = new Thickness(16),
+            Children =
+            {
+                Section("Economía virtual de canal (Sin valor fiat)"),
+                new TextBlock
+                {
+                    Text = "Los puntos de canal incentivan la participación de la comunidad y se acreditan automáticamente por donaciones, membresías o regalos.",
+                    Classes = { "muted" },
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                pointsCheck,
+                Form(
+                    ("Nombre de los puntos", pointNameBox),
+                    ("Puntos por unidad monetaria (ej. 1 USD)", ptsPerCurr),
+                    ("Puntos por suscripción / miembro", ptsPerSub),
+                    ("Puntos por regalo virtual", ptsPerGift)
+                ),
+                Section("Historial de puntos otorgados"),
+                historyList
+            }
+        };
+
+        var tabs = new TabControl();
+        tabs.Items.Add(new TabItem { Header = "Reglas y alertas monetarias", Content = rulesGrid });
+        tabs.Items.Add(new TabItem { Header = "Puntos de canal y fidelidad", Content = new ScrollViewer { Content = pointsTab } });
+
+        var close = Primary("Cerrar");
+        close.Click += (_, _) => window.Close();
+        window.Content = Layout(tabs, close);
         await window.ShowDialog(owner);
     }
 

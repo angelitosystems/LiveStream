@@ -29,12 +29,56 @@ public sealed class PropertyEditor : ContentControl
     {
         _settings = settings;
         _dialogs = dialogs;
-        var panel = new StackPanel { Spacing = 10 };
+        var panel = new StackPanel { Spacing = 12 };
         foreach (var property in properties)
             if (CreateRow(property) is { } row)
                 panel.Children.Add(row);
         if (panel.Children.Count == 0)
-            panel.Children.Add(new TextBlock { Text = "Esta fuente no tiene propiedades editables.", Classes = { "muted" } });
+        {
+            var emptyCard = new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#FF181C23")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FF282D36")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(24, 28),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Child = new StackPanel
+                {
+                    Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "✓",
+                            FontSize = 24,
+                            Foreground = new SolidColorBrush(Color.Parse("#FF3D8BFF")),
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                            FontWeight = FontWeight.Bold
+                        },
+                        new TextBlock
+                        {
+                            Text = "Sin propiedades editables adicionales",
+                            FontWeight = FontWeight.SemiBold,
+                            FontSize = 13,
+                            Foreground = new SolidColorBrush(Color.Parse("#FFE6E8EB")),
+                            HorizontalAlignment = HorizontalAlignment.Center
+                        },
+                        new TextBlock
+                        {
+                            Text = "Esta fuente utiliza la configuración predeterminada del sistema.",
+                            Classes = { "muted" },
+                            FontSize = 11,
+                            TextWrapping = TextWrapping.Wrap,
+                            TextAlignment = TextAlignment.Center,
+                            HorizontalAlignment = HorizontalAlignment.Center
+                        }
+                    }
+                }
+            };
+            panel.Children.Add(emptyCard);
+        }
         Content = panel;
     }
 
@@ -51,8 +95,16 @@ public sealed class PropertyEditor : ContentControl
         if (p.Type is SourcePropertyType.Bool or SourcePropertyType.Group || p.Info)
             return editor;
 
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("180,*"), ColumnSpacing = 12 };
-        var label = new TextBlock { Text = p.Description, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("190,*"), ColumnSpacing = 16 };
+        var label = new TextBlock
+        {
+            Text = p.Description,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.Parse("#FFE6E8EB")),
+            FontSize = 12.5,
+            FontWeight = FontWeight.Medium
+        };
         grid.Children.Add(label);
         Grid.SetColumn(editor, 1);
         grid.Children.Add(editor);
@@ -311,14 +363,44 @@ public sealed class PropertyEditor : ContentControl
 
     private Control GroupEditor(SourceProperty p)
     {
-        var panel = new StackPanel { Spacing = 10, Margin = new Thickness(12, 4, 0, 0) };
+        var panel = new StackPanel { Spacing = 10, Margin = new Thickness(14, 12, 14, 12) };
         foreach (var child in p.Children ?? [])
             if (CreateRow(child) is { } row)
                 panel.Children.Add(row);
-        return new StackPanel
+
+        var groupHeader = new TextBlock
         {
-            Spacing = 4,
-            Children = { new TextBlock { Text = p.Description, Classes = { "section" } }, panel },
+            Text = p.Description,
+            FontWeight = FontWeight.SemiBold,
+            FontSize = 12.5,
+            Foreground = new SolidColorBrush(Color.Parse("#FF93C5FD")),
+            VerticalAlignment = VerticalAlignment.Center
         };
+
+        var card = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FF181C23")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#FF282D36")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Margin = new Thickness(0, 4, 0, 8),
+            Child = new StackPanel
+            {
+                Children =
+                {
+                    new Border
+                    {
+                        Background = new SolidColorBrush(Color.Parse("#FF202632")),
+                        BorderBrush = new SolidColorBrush(Color.Parse("#FF282D36")),
+                        BorderThickness = new Thickness(0, 0, 0, 1),
+                        CornerRadius = new CornerRadius(8, 8, 0, 0),
+                        Padding = new Thickness(14, 8),
+                        Child = groupHeader
+                    },
+                    panel
+                }
+            }
+        };
+        return card;
     }
 }

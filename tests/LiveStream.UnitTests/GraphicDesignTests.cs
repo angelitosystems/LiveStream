@@ -218,9 +218,9 @@ public sealed class GraphicDesignTests : IDisposable
         var json = ProjectSerializer.Serialize(_project);
         var loaded = ProjectSerializer.Deserialize(json).GetGraphic(g.Id);
         Assert.Equal(g.Design, loaded.Design);
-        Assert.Contains("\"schemaVersion\": 5", json);
+        Assert.Contains("\"schemaVersion\": 6", json);
 
-        var v4 = json.Replace("\"schemaVersion\": 5", "\"schemaVersion\": 4");
+        var v4 = json.Replace("\"schemaVersion\": 6", "\"schemaVersion\": 4");
         Assert.Equal(g.Design, ProjectSerializer.Deserialize(v4).GetGraphic(g.Id).Design);
     }
 

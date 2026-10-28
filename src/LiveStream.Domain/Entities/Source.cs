@@ -50,6 +50,9 @@ public sealed class Source
     public AudioMonitoring Monitoring { get; set; }
     public int SyncOffsetMs { get; set; }
 
+    /// <summary>Indica si se captura y procesa el audio de esta fuente (false = modo solo vídeo o sin captura de audio).</summary>
+    public bool AudioCaptureEnabled { get; set; } = true;
+
     /// <summary>
     /// Canal global (1..5) para fuentes que suenan en todas las escenas, como el audio de escritorio y el
     /// micrófono. 0 = solo suena cuando está en la escena de programa.
@@ -57,6 +60,12 @@ public sealed class Source
     public int GlobalAudioChannel { get; private set; }
 
     public bool IsAudioOnly => Kind is SourceKind.AudioInput or SourceKind.AudioOutput;
+
+    /// <summary>Indica si el tipo de fuente tiene capacidades potenciales de audio.</summary>
+    public bool SupportsAudio => Kind is SourceKind.AudioInput or SourceKind.AudioOutput or SourceKind.Media or SourceKind.VideoCaptureDevice or SourceKind.Browser;
+
+    /// <summary>Indica si la fuente entrega audio activo a la mezcla actual.</summary>
+    public bool HasActiveAudio => SupportsAudio && (IsAudioOnly || AudioCaptureEnabled);
 
     private readonly List<SourceFilter> _filters = [];
 
@@ -90,6 +99,8 @@ public sealed class Source
 
     public void SetVolume(double multiplier) =>
         Volume = multiplier is >= 0 and <= 20 ? multiplier : throw new ArgumentOutOfRangeException(nameof(multiplier));
+
+    public void SetAudioCaptureEnabled(bool enabled) => AudioCaptureEnabled = enabled;
 
     public void SetGlobalAudioChannel(int channel) =>
         GlobalAudioChannel = channel is >= 0 and <= MaxGlobalAudioChannel

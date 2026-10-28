@@ -1,16 +1,22 @@
+using LiveStream.Domain.Alerts;
+using LiveStream.Domain.Chat;
+using LiveStream.Domain.Compositions;
 using LiveStream.Domain.Graphics;
+using LiveStream.Domain.Integrations;
 
 namespace LiveStream.Domain.Entities;
 
 /// <summary>Raíz del proyecto de estudio. Es la unidad que se persiste y versiona.</summary>
 public sealed class StudioProject
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     private readonly List<Scene> _scenes = [];
     private readonly List<Source> _sources = [];
     private readonly List<Graphic> _graphics = [];
     private readonly List<StreamDestination> _destinations = [];
+    private readonly List<AlertRule> _alertRules = [];
+    private readonly List<PlatformIntegrationConfig> _integrations = [];
 
     /// <summary>Destinos de emisión (multistream). Se emite a todos los activados a la vez.</summary>
     public IReadOnlyList<StreamDestination> Destinations => _destinations;
@@ -68,9 +74,39 @@ public sealed class StudioProject
     public TransitionSettings Transition { get; set; } = new();
     public StreamSettings Stream { get; set; } = new();
     public RecordingPreferences Recording { get; set; } = new();
+    public DualCompositionSettings DualComposition { get; set; } = new();
+    public ChatOverlayStyle ChatOverlay { get; set; } = new();
 
     public IReadOnlyList<Scene> Scenes => _scenes;
     public IReadOnlyList<Source> Sources => _sources;
+    public IReadOnlyList<AlertRule> AlertRules => _alertRules;
+    public IReadOnlyList<PlatformIntegrationConfig> Integrations => _integrations;
+
+    public void AddAlertRule(AlertRule rule)
+    {
+        _alertRules.RemoveAll(r => r.Id == rule.Id);
+        _alertRules.Add(rule);
+    }
+
+    public bool RemoveAlertRule(Guid id) => _alertRules.RemoveAll(r => r.Id == id) > 0;
+
+    public void SetAlertRules(IEnumerable<AlertRule> rules)
+    {
+        _alertRules.Clear();
+        _alertRules.AddRange(rules);
+    }
+
+    public void SetIntegration(PlatformIntegrationConfig config)
+    {
+        var idx = _integrations.FindIndex(i => i.Platform == config.Platform);
+        if (idx >= 0)
+            _integrations[idx] = config;
+        else
+            _integrations.Add(config);
+    }
+
+    public PlatformIntegrationConfig GetIntegration(StreamPlatform platform) =>
+        _integrations.FirstOrDefault(i => i.Platform == platform) ?? PlatformIntegrationConfig.CreateDefault(platform);
 
     /// <summary>Gráficos de la capa superpuesta, de abajo (índice 0) hacia arriba.</summary>
     public IReadOnlyList<Graphic> Graphics => _graphics;
@@ -172,9 +208,11 @@ public sealed class StudioProject
     public int IndexOfSource(Guid sourceId) => _sources.FindIndex(s => s.Id == sourceId);
 
     /// <summary>Elimina la fuente y todos sus elementos en cualquier escena.</summary>
-    public Source RemoveSource(Guid sourceId)
+    public Source? RemoveSource(Guid sourceId)
     {
-        var source = GetSource(sourceId);
+        var source = FindSource(sourceId);
+        if (source is null)
+            return null;
         foreach (var scene in _scenes)
             foreach (var item in scene.Items.Where(i => i.SourceId == sourceId).ToList())
                 scene.RemoveItem(item.Id);

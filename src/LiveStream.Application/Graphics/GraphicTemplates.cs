@@ -67,6 +67,7 @@ public static partial class GraphicTemplates
         GraphicKind.Scoreboard => "Marcador deportivo",
         GraphicKind.LiveBadge => "Mosca EN VIVO",
         GraphicKind.Alert => "Alerta",
+        GraphicKind.ChatOverlay => "Chat en directo",
         GraphicKind.Custom => "Diseño libre",
         _ => kind.ToString(),
     };
@@ -88,6 +89,7 @@ public static partial class GraphicTemplates
             new("awayScore", "Tanteo visitante", "0"), new("period", "Periodo", "1T"), new("clock", "Tiempo", "00:00")],
         GraphicKind.LiveBadge => [new("text", "Texto", "● EN VIVO")],
         GraphicKind.Alert => [new("title", "Título", "¡Nuevo seguidor!"), new("message", "Mensaje", "Gracias por seguir el canal")],
+        GraphicKind.ChatOverlay => [new("line1", "Línea 1", "Alex: ¡Buen directo!"), new("line2", "Línea 2", "Sofi: Hola a todos"), new("line3", "Línea 3", "Carlos: Saludos"), new("line4", "Línea 4", "")],
         _ => [],
     };
 
@@ -142,6 +144,7 @@ public static partial class GraphicTemplates
             GraphicKind.Clock => (canvas.Width - (Margin + 220) * k, 200 * k),
             GraphicKind.Scoreboard => (Margin * k, 64 * k),
             GraphicKind.Alert => ((canvas.Width - 720 * k) / 2, canvas.Height * 0.12),
+            GraphicKind.ChatOverlay => (Margin * k, canvas.Height - 340 * k),
             _ => (Margin * k, Margin * k),
         };
         var (animIn, animOut) = kind switch
@@ -149,6 +152,7 @@ public static partial class GraphicTemplates
             GraphicKind.LowerThird or GraphicKind.Headline => (GraphicAnimation.Wipe, GraphicAnimation.Fade),
             GraphicKind.Ticker => (GraphicAnimation.SlideFromBottom, GraphicAnimation.SlideFromBottom),
             GraphicKind.Alert => (GraphicAnimation.Pop, GraphicAnimation.Fade),
+            GraphicKind.ChatOverlay => (GraphicAnimation.SlideFromBottom, GraphicAnimation.Fade),
             GraphicKind.Scoreboard => (GraphicAnimation.SlideFromTop, GraphicAnimation.SlideFromTop),
             _ => (GraphicAnimation.Fade, GraphicAnimation.Fade),
         };

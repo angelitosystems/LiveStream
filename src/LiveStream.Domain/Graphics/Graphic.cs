@@ -19,6 +19,8 @@ public enum GraphicKind
     LiveBadge,
     /// <summary>Alerta de directo (título y mensaje) que se oculta sola.</summary>
     Alert,
+    /// <summary>Superposición de chat en directo en pantalla.</summary>
+    ChatOverlay,
     /// <summary>Diseño libre: los elementos los define el usuario en el editor visual.</summary>
     Custom,
 }

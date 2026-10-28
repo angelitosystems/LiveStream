@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace LiveStream.Infrastructure.Persistence;
 
@@ -9,9 +9,36 @@ namespace LiveStream.Infrastructure.Persistence;
 /// <param name="PluginDeveloperMode">Permite instalar plugins sin firma (solo para quien los desarrolla).</param>
 /// <param name="DockColumnWidths">Ancho de las columnas del dock de paneles (cada una en orden), recordado de la última sesión.</param>
 /// <param name="DockRowHeight">Altura de la fila de paneles del dock.</param>
-public sealed record MachineSettings(int RenderAdapterIndex = 0, bool AdaptiveBitrate = true, string? UpdateFeedUrl = null,
-    string? PluginCatalogUrl = null, string? PluginRepository = null, bool PluginDeveloperMode = false,
-    string? DockColumnWidths = null, string? DockRowHeight = null);
+public sealed record MachineSettings(
+    int RenderAdapterIndex = 0,
+    bool AdaptiveBitrate = true,
+    string? UpdateFeedUrl = null,
+    string? PluginCatalogUrl = null,
+    string? PluginRepository = null,
+    bool PluginDeveloperMode = false,
+    string? DockColumnWidths = null,
+    string? DockRowHeight = null,
+    string? DockLayout = null,
+    string Language = "Español",
+    string Theme = "Oscuro",
+    bool ConfirmStartStream = false,
+    bool ConfirmStopStream = true,
+    bool ConfirmStopRecord = true,
+    bool AutoRecordOnStream = false,
+    bool KeepRecordingOnStreamStop = true,
+    bool SnapEnabled = true,
+    double SnapSensitivity = 10.0,
+    bool SnapToScreenEdges = true,
+    bool SnapToOtherSources = true,
+    bool CheckUpdatesAtStartup = true,
+    string UpdateChannel = "Estable",
+    int AudioSampleRate = 48000,
+    int AudioChannels = 2,
+    string AudioMonitoringDevice = "default",
+    string ColorFormat = "NV12",
+    string ColorSpace = "sRGB",
+    string ColorRange = "Parcial",
+    int ProcessPriority = 1);
 
 /// <summary>%APPDATA%\LiveStream\machine.json. Un archivo dañado no impide arrancar: se usan los valores por defecto.</summary>
 public sealed class MachineSettingsStore(string? path = null)

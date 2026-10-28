@@ -25,6 +25,9 @@ public sealed class App : Avalonia.Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             AppLog.Info("app", $"LiveStream iniciado ({Environment.OSVersion}, {Environment.ProcessorCount} hilos)");
+            LiveStream.Application.AppLog.InfoAction = AppLog.Info;
+            LiveStream.Application.AppLog.WarnAction = AppLog.Warn;
+            LiveStream.Application.AppLog.ErrorAction = AppLog.Error;
             LibObsEngine.Log += (level, message) => AppLog.Write(level.ToUpperInvariant(), "libobs", message);
             AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Fatal("app", "Excepción no controlada", e.ExceptionObject as Exception);
             TaskScheduler.UnobservedTaskException += (_, e) => AppLog.Error("app", "Tarea con excepción no observada", e.Exception);

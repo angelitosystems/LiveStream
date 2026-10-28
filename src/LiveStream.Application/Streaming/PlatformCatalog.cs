@@ -30,6 +30,9 @@ public static class PlatformCatalog
         new(StreamPlatform.TikTok, "TikTok", "",
             "TikTok solo da servidor y clave a cuentas habilitadas para emitir con software externo (requisitos de edad, " +
             "seguidores o permiso de LIVE). Si tu cuenta no lo tiene, LiveStream no puede emitir allí."),
+        new(StreamPlatform.Instagram, "Instagram Live", "",
+            "Instagram requiere Instagram Live Producer (disponible en cuentas profesionales/creador en instagram.com/live/producer). " +
+            "Proporciona URL RTMPS y clave temporal. Formato recomendado: Vertical (9:16) a 1080x1920.", RequiresRtmps: true),
         new(StreamPlatform.Relay, "Relay propio (SRS, MediaMTX…)", "",
             "Emite una sola vez a tu servidor relay y deja que él reenvíe a las plataformas: ahorra subida si el relay " +
             "está en la nube. La credencial es la del relay, guardada aparte de las de las plataformas."),

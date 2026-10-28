@@ -77,3 +77,35 @@ public sealed class SetSyncOffsetCommand(Guid sourceId, int offsetMs) : IStudioC
             await context.Engine.SetSyncOffsetAsync(sourceId, offsetMs, ct).ConfigureAwait(false);
     }
 }
+
+/// <summary>Activa o desactiva la captura de audio en fuentes que admiten vídeo y audio (cámaras, multimedia, capturas).</summary>
+public sealed class SetAudioCaptureEnabledCommand(Guid sourceId, bool enabled) : IReversibleStudioCommand
+{
+    private bool _previousEnabled;
+
+    public string Description => enabled ? "Activar captura de audio" : "Desactivar captura de audio";
+
+    public string? Validate(StudioContext context) => context.Project.FindSource(sourceId) is null ? "La fuente no existe." : null;
+
+    public async Task ExecuteAsync(StudioContext context, CancellationToken ct)
+    {
+        var source = context.Project.GetSource(sourceId);
+        _previousEnabled = source.AudioCaptureEnabled;
+        source.SetAudioCaptureEnabled(enabled);
+        if (context.Engine.IsInitialized)
+        {
+            // Si se desactiva, silenciar en el motor para evitar alimentar el bus de audio
+            await context.Engine.SetMutedAsync(sourceId, !enabled || source.Muted, ct).ConfigureAwait(false);
+        }
+    }
+
+    public async Task UndoAsync(StudioContext context, CancellationToken ct)
+    {
+        var source = context.Project.GetSource(sourceId);
+        source.SetAudioCaptureEnabled(_previousEnabled);
+        if (context.Engine.IsInitialized)
+        {
+            await context.Engine.SetMutedAsync(sourceId, !_previousEnabled || source.Muted, ct).ConfigureAwait(false);
+        }
+    }
+}

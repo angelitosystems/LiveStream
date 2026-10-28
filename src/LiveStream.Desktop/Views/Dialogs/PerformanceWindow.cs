@@ -46,7 +46,7 @@ public static class PerformanceWindow
         HardwareInfo? hardware = null;
         IReadOnlyList<BenchmarkResult> results = [];
 
-        TextBlock Section(string text) => new() { Text = text, FontWeight = FontWeight.SemiBold, FontSize = 15, Margin = new Thickness(0, 12, 0, 2) };
+        
 
         void RenderRecommendations()
         {
@@ -183,9 +183,25 @@ public static class PerformanceWindow
             try
             {
                 var bitrate = ProfileAdvisor.StreamBitrateFor(vm.Project.Canvas);
-                results = await Task.Run(() => EncoderBenchmark.RunAsync(vm.Engine, candidates, bitrate, TimeSpan.FromSeconds(4),
+                var targetScenes = new List<Guid>();
+                if (vm.EditSceneId.HasValue)
+                    targetScenes.Add(vm.EditSceneId.Value);
+                if (vm.Project.ActiveSceneId.HasValue && !targetScenes.Contains(vm.Project.ActiveSceneId.Value))
+                    targetScenes.Add(vm.Project.ActiveSceneId.Value);
+                if (targetScenes.Count == 0 && vm.Project.Scenes.Count > 0)
+                    targetScenes.Add(vm.Project.Scenes[0].Id);
+
+                results = await Task.Run(() => EncoderBenchmark.RunAsync(
+                    vm.Engine,
+                    candidates,
+                    bitrate,
+                    TimeSpan.FromSeconds(4),
                     Path.Combine(Path.GetTempPath(), "LiveStream", "benchmark"),
-                    text => Dispatcher.UIThread.Post(() => benchStatus.Text = text), CancellationToken.None));
+                    text => Dispatcher.UIThread.Post(() => benchStatus.Text = text),
+                    targetScenes,
+                    vm.Project.Canvas.Width,
+                    vm.Project.Canvas.Height,
+                    CancellationToken.None));
                 foreach (var r in results)
                     benchTable.Children.Add(new TextBlock
                     {
@@ -221,26 +237,73 @@ public static class PerformanceWindow
             _open = null;
         };
 
+        Border Card(string title, Control content)
+        {
+            return new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#FF161A22")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FF232832")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16, 12),
+                Margin = new Thickness(0, 0, 0, 12),
+                Child = new StackPanel
+                {
+                    Spacing = 8,
+                    Children =
+                    {
+                        new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, FontSize = 13, Foreground = new SolidColorBrush(Color.Parse("#FF3D8BFF")) },
+                        content,
+                    },
+                },
+            };
+        }
+
+        var hardwareCard = Card("Hardware y Adaptadores Gráficos", hardwareText);
+        var benchCard = Card("Benchmark de Codificadores", new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "Evalúa el rendimiento de codificación en tiempo real midiendo fotogramas descartados, latencia de renderizado y uso de procesador.", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { benchButton, benchStatus } },
+                benchTable,
+            },
+        });
+        var recCard = Card("Recomendaciones de Optimización", new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "Perfiles recomendados según la GPU y codificadores presentes. Nada se aplica sin tu consentimiento explícito.", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap },
+                recommendations,
+            },
+        });
+        var liveCard = Card("Control Dinámico de Emisión", new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                adaptive,
+                new TextBlock { Text = "Si la red pierde fotogramas, baja el bitrate de la emisión sin cortarla y lo recupera cuando la conexión se estabiliza.", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap },
+                status,
+                restore,
+            },
+        });
+        var logCard = Card("Registro de Decisiones y Auditoría", log);
+
         var body = new ScrollViewer
         {
+            Padding = new Thickness(16),
             Content = new StackPanel
             {
-                Margin = new Thickness(16),
-                Spacing = 6,
                 Children =
                 {
-                    Section("Equipo"), hardwareText,
-                    Section("Benchmark de codificadores"),
-                    new TextBlock { Text = "Codifica el programa real con cada codificador H.264 disponible y mide fotogramas descartados, retraso de render y CPU.", Classes = { "muted" }, TextWrapping = TextWrapping.Wrap },
-                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { benchButton, benchStatus } },
-                    benchTable,
-                    Section("Recomendaciones"),
-                    new TextBlock { Text = "Nada se aplica sin tu autorización. Los cambios de codificador, resolución, FPS o GPU afectan a la próxima salida o requieren reiniciar.", Classes = { "muted" }, TextWrapping = TextWrapping.Wrap },
-                    recommendations,
-                    Section("En directo"), adaptive,
-                    new TextBlock { Text = "Si la red pierde fotogramas, baja el bitrate de la emisión sin cortarla y lo recupera poco a poco cuando la conexión se estabiliza (nunca por encima del configurado). Solo con codificadores que lo admiten.", Classes = { "muted" }, TextWrapping = TextWrapping.Wrap },
-                    status, restore,
-                    Section("Registro de decisiones"), log,
+                    hardwareCard,
+                    benchCard,
+                    recCard,
+                    liveCard,
+                    logCard,
                 },
             },
         };
