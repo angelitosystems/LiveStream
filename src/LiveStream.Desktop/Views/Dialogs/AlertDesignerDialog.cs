@@ -6,7 +6,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using LiveStream.Application.Alerts;
+using LiveStream.Extensions.Alerts;
 using LiveStream.Desktop.Components;
 using LiveStream.Desktop.ViewModels;
 using LiveStream.Domain.Alerts;
@@ -160,7 +160,7 @@ public static class AlertDesignerDialog
                     previewCard.Background = new SolidColorBrush(bgCol);
                 }
             }
-            catch { }
+            catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("alertas", $"Vista previa de la alerta: {ex.Message}"); }
         }
 
         // Token helper buttons
@@ -315,8 +315,9 @@ public static class AlertDesignerDialog
                 BackgroundColor: bgColorBox.Text ?? "#1E293B"
             );
 
-            vm.Alerts.TestPlatform = StreamPlatform.Twitch;
-            session.Alerts.TriggerTestAlert(kind, StreamPlatform.Twitch, [ruleToTest]);
+            if (vm.Alerts is { } alertsVm)
+                alertsVm.TestPlatform = StreamPlatform.Twitch;
+            vm.Feature(session.Extensions.Get<AlertQueue>(), "Las alertas").TriggerTestAlert(kind, StreamPlatform.Twitch, [ruleToTest]);
         };
 
         // Guardar regla

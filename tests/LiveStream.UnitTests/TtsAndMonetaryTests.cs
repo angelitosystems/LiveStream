@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using LiveStream.Application.Alerts;
-using LiveStream.Application.Chat;
-using LiveStream.Application.Tts;
+using LiveStream.Extensions.Alerts;
+using LiveStream.Extensions.Chat;
+using LiveStream.Extensions.Tts;
 using LiveStream.Domain.Alerts;
 using LiveStream.Domain.Chat;
 using LiveStream.Domain.Entities;
@@ -319,7 +319,8 @@ public sealed class TtsAndMonetaryTests
         await queue.TogglePauseAsync();
 
         var chat = new UnifiedChatService();
-        var coordinator = new ChatTtsCoordinator(chat, queue);
+        var coordinator = new ChatTtsCoordinator(queue);
+        chat.MessageAdded += (_, m) => coordinator.HandleMessage(m);
 
         // Regla Twitch: solo suscriptores
         coordinator.SetPlatformRule(new TtsPlatformRule(
@@ -382,10 +383,11 @@ public sealed class TtsAndMonetaryTests
         await queue.TogglePauseAsync();
 
         var chat = new UnifiedChatService();
-        var coordinator = new ChatTtsCoordinator(chat, queue)
+        var coordinator = new ChatTtsCoordinator(queue)
         {
             AutoReadEnabled = false // Auto-lectura desactivada
         };
+        chat.MessageAdded += (_, m) => coordinator.HandleMessage(m);
 
         var msg = new ChatMessage(
             Id: "manual-msg",
@@ -413,7 +415,8 @@ public sealed class TtsAndMonetaryTests
         var mock = new MockTtsProvider();
         using var queue = new TtsQueueService(mock);
         var chat = new UnifiedChatService();
-        var coordinator = new ChatTtsCoordinator(chat, queue);
+        var coordinator = new ChatTtsCoordinator(queue);
+        chat.MessageAdded += (_, m) => coordinator.HandleMessage(m);
 
         coordinator.BlockUser("toxic-user-id");
         Assert.True(coordinator.IsUserBlocked("toxic-user-id"));
@@ -466,7 +469,8 @@ public sealed class TtsAndMonetaryTests
         await queue.TogglePauseAsync();
 
         var chat = new UnifiedChatService();
-        var coordinator = new ChatTtsCoordinator(chat, queue);
+        var coordinator = new ChatTtsCoordinator(queue);
+        chat.MessageAdded += (_, m) => coordinator.HandleMessage(m);
 
         coordinator.SetPlatformRule(new TtsPlatformRule(
             Platform: StreamPlatform.TikTok,

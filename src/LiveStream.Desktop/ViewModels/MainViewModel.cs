@@ -22,7 +22,12 @@ using LiveStream.Infrastructure.Plugins;
 using LiveStream.Infrastructure.Updates;
 using LiveStream.PluginSdk;
 using LiveStream.Native.Engine;
-using LiveStream.Application.DualStreaming;
+using LiveStream.Application.Extensions;
+using LiveStream.Extensions.Alerts;
+using LiveStream.Extensions.Chat;
+using LiveStream.Extensions.DualStreaming;
+using LiveStream.Extensions.Integrations;
+using LiveStream.Extensions.Tts;
 using LiveStream.Domain.Compositions;
 
 namespace LiveStream.Desktop.ViewModels;
@@ -72,13 +77,25 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
 
         _metricsTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, async (_, _) => await PollMetricsAsync());
         _meterTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, async (_, _) => await PollMetersAsync());
-        Chat = new ChatViewModel(session.Chat, session.ChatOverlay, session.ChatTts);
-        Alerts = new AlertsViewModel(session);
-        Integrations = new IntegrationsViewModel(session, secrets);
-        Tts = new TtsViewModel(session.ChatTts);
-        MonetaryAlerts = new MonetaryAlertsViewModel(session.MonetaryAlerts, session.ChannelPoints);
-        DualStream = session.DualStream;
-        DualStream.ActiveFormatChanged += (_, format) =>
+        // Las funcionalidades llegan de las extensiones: si una no cargó, su panel queda vacío y el resto funciona.
+        var extensions = session.Extensions;
+        if (extensions.Get<UnifiedChatService>() is { } chat && extensions.Get<ChatOverlayService>() is { } overlay)
+            Chat = new ChatViewModel(chat, overlay, extensions.Get<ChatTtsCoordinator>());
+        if (extensions.Get<AlertQueue>() is { } alerts)
+            Alerts = new AlertsViewModel(session, alerts);
+        if (extensions.Get<IntegrationManager>() is { } integrations)
+            Integrations = new IntegrationsViewModel(session, integrations, secrets);
+        if (extensions.Get<ChatTtsCoordinator>() is { } chatTts)
+            Tts = new TtsViewModel(chatTts);
+        if (extensions.Get<MonetaryAlertService>() is { } monetary && extensions.Get<ChannelPointsService>() is { } points)
+            MonetaryAlerts = new MonetaryAlertsViewModel(monetary, points);
+        extensions.Changed += (_, _) => Dispatcher.UIThread.Post(() =>
+        {
+            foreach (var name in new[] { nameof(ChatShown), nameof(AlertsShown), nameof(TtsShown), nameof(DonationsShown), nameof(SoundBankShown), nameof(ProductionToolsShown) })
+                OnPropertyChanged(name);
+        });
+        if (extensions.Get<DualStreamCoordinator>() is { } dual)
+            dual.ActiveFormatChanged += (_, format) =>
         {
             Dispatcher.UIThread.Post(() =>
             {
@@ -106,25 +123,48 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable, 
     /// <summary>Plugins instalados (cada uno en su propio proceso).</summary>
     public PluginManager Plugins { get; }
 
-    /// <summary>Panel y servicio de chat unificado.</summary>
-    public ChatViewModel Chat { get; }
+    /// <summary>Panel y servicio de chat unificado (extensión «chat»; null si no cargó).</summary>
+    public ChatViewModel? Chat { get; }
 
-    /// <summary>Centro y cola de alertas y eventos.</summary>
-    public AlertsViewModel Alerts { get; }
+    /// <summary>Centro y cola de alertas y eventos (extensión «alerts»).</summary>
+    public AlertsViewModel? Alerts { get; }
 
-    /// <summary>Gestor de integraciones y conexiones oficiales de plataformas.</summary>
-    public IntegrationsViewModel Integrations { get; }
+    /// <summary>Gestor de integraciones y conexiones oficiales de plataformas (extensión «chat»).</summary>
+    public IntegrationsViewModel? Integrations { get; }
 
-    /// <summary>Subsistema de lectura de comentarios y síntesis de voz (TTS).</summary>
-    public TtsViewModel Tts { get; }
+    /// <summary>Subsistema de lectura de comentarios y síntesis de voz (extensión «tts»).</summary>
+    public TtsViewModel? Tts { get; }
 
-    /// <summary>Panel y configuración de alertas monetarias, donaciones y puntos de canal.</summary>
-    public MonetaryAlertsViewModel MonetaryAlerts { get; }
+    /// <summary>Panel y configuración de alertas monetarias, donaciones y puntos de canal (extensión «donations»).</summary>
+    public MonetaryAlertsViewModel? MonetaryAlerts { get; }
 
-    /// <summary>Coordinador de emisión y composición dual simultánea.</summary>
-    public DualStreamCoordinator DualStream { get; }
+    // Si se muestra la interfaz de cada funcionalidad (paneles y entradas de menú).
+    public bool ChatShown => IsExtensionShown(ChatExtension.Id);
+    public bool AlertsShown => IsExtensionShown(AlertsExtension.Id);
+    public bool TtsShown => IsExtensionShown(TtsExtension.Id);
+    public bool DonationsShown => IsExtensionShown(DonationsExtension.Id);
+    public bool SoundBankShown => IsExtensionShown(SoundBankExtension.Id);
+    public bool ProductionToolsShown => AlertsShown || SoundBankShown || TtsShown || DonationsShown;
 
-    public CompositionFormat ActiveCompositionFormat => DualStream.ActiveFormat;
+    /// <summary>
+    /// Activa, o cargándose al arrancar (así no parpadea): su interfaz se ve. Desactivada, con error o esperando una
+    /// dependencia: se oculta hasta que vuelva a estar activa.
+    /// </summary>
+    public bool IsExtensionShown(string id) => Session.Extensions.StateOf(id) is ExtensionState.Running or ExtensionState.Registered;
+
+    public bool IsExtensionActive(string id) => Session.Extensions.StateOf(id) == ExtensionState.Running;
+
+    /// <summary>La pieza de una funcionalidad para un diálogo; si su extensión no cargó, un error que dice dónde mirar.</summary>
+    public T Feature<T>(T? feature, string what) where T : class =>
+        feature ?? throw new InvalidOperationException($"{what} no está disponible: su extensión no se pudo cargar (Herramientas → Extensiones).");
+
+    /// <summary>Coordinador de emisión dual; solo con la extensión «dual-stream» activa.</summary>
+    private DualStreamCoordinator DualStream =>
+        IsExtensionActive(DualStreamExtension.Id) && Session.Extensions.Get<DualStreamCoordinator>() is { } dual
+            ? dual
+            : throw new InvalidOperationException("La emisión dual está desactivada (Herramientas → Extensiones).");
+
+    public CompositionFormat ActiveCompositionFormat => Project.DualComposition.ActiveFormat;
     public bool IsHorizontalComposition => ActiveCompositionFormat == CompositionFormat.Horizontal;
     public bool IsVerticalComposition => ActiveCompositionFormat == CompositionFormat.Vertical;
     public string CompositionFormatLabel => IsVerticalComposition ? "Vertical (9:16)" : "Horizontal (16:9)";

@@ -69,10 +69,25 @@ public sealed partial class MainWindow : Window
         vm.TransitionNeedsSettings += async (_, type) =>
             await Guard("Transición", () => ProductionDialogs.ShowTransitionSettingsAsync(vm, null, type));
         ApplyStudioLayout(vm.StudioMode);
-        vm.Alerts.RequestOpenDesigner += async () =>
-            await Guard("Editor de alertas", () => AlertDesignerDialog.ShowAsync(vm, this));
-        vm.Alerts.RequestOpenSoundBank += async () =>
-            await Guard("Banco de sonidos", () => SoundBankDialog.ShowPickerAsync(vm, this));
+        // Un panel de una extensión desactivada no se dibuja; al reactivarla vuelve a su sitio en el dock.
+        void ApplyExtensionPanels()
+        {
+            DockHost.SetPanelHidden("chat", !vm.ChatShown);
+            DockHost.SetPanelHidden("alerts", !vm.AlertsShown);
+        }
+        ApplyExtensionPanels();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MainViewModel.ChatShown) or nameof(MainViewModel.AlertsShown))
+                ApplyExtensionPanels();
+        };
+        if (vm.Alerts is { } alerts)
+        {
+            alerts.RequestOpenDesigner += async () =>
+                await Guard("Editor de alertas", () => AlertDesignerDialog.ShowAsync(vm, this));
+            alerts.RequestOpenSoundBank += async () =>
+                await Guard("Banco de sonidos", () => SoundBankDialog.ShowPickerAsync(vm, this));
+        }
     }
 
     /// <summary>Fuera del modo estudio la vista previa ocupa todo el ancho; dentro, se reparte con el programa.</summary>
@@ -155,7 +170,7 @@ public sealed partial class MainWindow : Window
     }
 
     private async void OnDuplicateSource(object? sender, RoutedEventArgs e) =>
-        await Vm.DuplicateSourceCommand.ExecuteAsync(null);
+        await Guard("Duplicar fuente", () => Vm.DuplicateSourceCommand.ExecuteAsync(null));
 
     protected override async void OnKeyDown(KeyEventArgs e)
     {
@@ -304,7 +319,7 @@ public sealed partial class MainWindow : Window
             return;
         if (Vm.SelectedGraphic is not { } row)
             return;
-        await OpenDesignerAsync(row.Id);
+        await Guard("Diseño", () => OpenDesignerAsync(row.Id));
     }
 
     private async Task OpenDesignerAsync(Guid graphicId)
@@ -354,7 +369,8 @@ public sealed partial class MainWindow : Window
     private async void OnResourceLibrary(object? sender, RoutedEventArgs e) =>
         await Guard("Biblioteca de recursos", () => ResourceLibraryDialog.ShowBrowserAsync(Vm));
 
-    private async void OnMarketplace(object? sender, RoutedEventArgs e) => await Guard("Marketplace", () => MarketplaceDialog.ShowAsync(Vm));
+    private async void OnMarketplace(object? sender, RoutedEventArgs e) => await Guard("Extensiones y plugins", () => MarketplaceDialog.ShowAsync(Vm));
+
 
     private async void OnBrandKit(object? sender, RoutedEventArgs e) => await Guard("Kit de marca", () => ProductionDialogs.ShowBrandKitAsync(Vm));
 

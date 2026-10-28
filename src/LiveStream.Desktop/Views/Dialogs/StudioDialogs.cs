@@ -1565,7 +1565,7 @@ public static class StudioDialogs
                 if (doc.RootElement.TryGetProperty("device_id", out var p))
                     currentDesktopId = p.GetString() ?? "default";
             }
-            catch { }
+            catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
         }
 
         var currentMic = project.Sources.FirstOrDefault(s => s.Kind == SourceKind.AudioInput && s.GlobalAudioChannel > 0);
@@ -1582,7 +1582,7 @@ public static class StudioDialogs
                 if (doc.RootElement.TryGetProperty("device_id", out var p))
                     currentMicId = p.GetString() ?? "default";
             }
-            catch { }
+            catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
         }
 
         var desktopAudioBox = new ComboBox
@@ -1865,8 +1865,8 @@ public static class StudioDialogs
                     existingDesktop.SetGlobalAudioChannel(0);
                     if (vm.EngineReady)
                     {
-                        try { await vm.Engine.SetGlobalAudioChannelAsync(existingDesktop.Id, 0, CancellationToken.None); } catch { }
-                        try { await vm.Engine.RemoveSourceAsync(existingDesktop.Id, CancellationToken.None); } catch { }
+                        try { await vm.Engine.SetGlobalAudioChannelAsync(existingDesktop.Id, 0, CancellationToken.None); } catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
+                        try { await vm.Engine.RemoveSourceAsync(existingDesktop.Id, CancellationToken.None); } catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
                     }
                     vm.Project.RemoveSource(existingDesktop.Id);
                 }
@@ -1891,7 +1891,7 @@ public static class StudioDialogs
                             await vm.Engine.CreateSourceAsync(new SourceDefinition(newDesktop.Id, newDesktop.Name, newDesktop.Kind, settingsJson), CancellationToken.None);
                             await vm.Engine.SetGlobalAudioChannelAsync(newDesktop.Id, 1, CancellationToken.None);
                         }
-                        catch { }
+                        catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
                     }
                 }
                 else
@@ -1905,7 +1905,7 @@ public static class StudioDialogs
                             await vm.Engine.UpdateSourceSettingsAsync(existingDesktop.Id, settingsJson, CancellationToken.None);
                             await vm.Engine.SetGlobalAudioChannelAsync(existingDesktop.Id, 1, CancellationToken.None);
                         }
-                        catch { }
+                        catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
                     }
                 }
             }
@@ -1921,8 +1921,8 @@ public static class StudioDialogs
                     existingMic.SetGlobalAudioChannel(0);
                     if (vm.EngineReady)
                     {
-                        try { await vm.Engine.SetGlobalAudioChannelAsync(existingMic.Id, 0, CancellationToken.None); } catch { }
-                        try { await vm.Engine.RemoveSourceAsync(existingMic.Id, CancellationToken.None); } catch { }
+                        try { await vm.Engine.SetGlobalAudioChannelAsync(existingMic.Id, 0, CancellationToken.None); } catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
+                        try { await vm.Engine.RemoveSourceAsync(existingMic.Id, CancellationToken.None); } catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
                     }
                     vm.Project.RemoveSource(existingMic.Id);
                 }
@@ -1947,7 +1947,7 @@ public static class StudioDialogs
                             await vm.Engine.CreateSourceAsync(new SourceDefinition(newMic.Id, newMic.Name, newMic.Kind, settingsJson), CancellationToken.None);
                             await vm.Engine.SetGlobalAudioChannelAsync(newMic.Id, 3, CancellationToken.None);
                         }
-                        catch { }
+                        catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
                     }
                 }
                 else
@@ -1961,7 +1961,7 @@ public static class StudioDialogs
                             await vm.Engine.UpdateSourceSettingsAsync(existingMic.Id, settingsJson, CancellationToken.None);
                             await vm.Engine.SetGlobalAudioChannelAsync(existingMic.Id, 3, CancellationToken.None);
                         }
-                        catch { }
+                        catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("audio", $"Ajustes de audio: {ex.Message}"); }
                     }
                 }
             }

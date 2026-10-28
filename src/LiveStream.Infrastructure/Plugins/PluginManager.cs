@@ -27,15 +27,31 @@ public sealed class PluginManager(PluginStore store, Func<InstalledPlugin, Assis
             await StartAsync(plugin, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Instala o actualiza un paquete ya verificado y aceptado por el usuario.</summary>
+    /// <summary>
+    /// Instala o actualiza un paquete ya verificado y aceptado por el usuario. Si una actualización no arranca, se
+    /// restaura la versión anterior (que vuelve a funcionar) y se informa con <see cref="PluginValidationException"/>.
+    /// </summary>
     public Task<InstalledPlugin> InstallAsync(string packagePath, PackageSignature? signature, string source, CancellationToken ct) =>
         ExclusiveAsync(async () =>
         {
             var manifest = Store.Verify(packagePath, signature);
+            var previousVersion = Store.Find(manifest.Id)?.Manifest.Version;
             await StopAsync(manifest.Id).ConfigureAwait(false);
-            var installed = Store.Install(packagePath, signature, source, enable: true);
+            var installed = Store.Install(packagePath, signature, source, enable: true, keepPrevious: true);
             await StartAsync(installed, ct).ConfigureAwait(false);
-            return installed;
+            if (Host(installed.Id) is not { State: PluginRunState.Failed } failed)
+            {
+                Store.CommitUpdate(installed.Id);
+                return installed;
+            }
+            var error = failed.LastError;
+            await StopAsync(installed.Id).ConfigureAwait(false);
+            if (previousVersion is null || Store.RollBack(installed.Id) is not { } restored)
+                return installed; // instalación nueva: queda instalada con su error visible
+            if (restored.Record.Enabled)
+                await StartAsync(restored, ct).ConfigureAwait(false);
+            throw new PluginValidationException(
+                $"La versión {manifest.Version} de «{manifest.Name}» no arrancó ({error}). Se restauró la {previousVersion}.");
         });
 
     public Task UninstallAsync(string id) => ExclusiveAsync(async () =>

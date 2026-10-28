@@ -6,7 +6,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using LiveStream.Application.Alerts;
+using LiveStream.Extensions.Alerts;
 using LiveStream.Desktop.Components;
 using LiveStream.Desktop.ViewModels;
 using static LiveStream.Desktop.Views.Dialogs.StudioDialogs;
@@ -25,7 +25,7 @@ public static class SoundBankDialog
         var parent = owner ?? vm.Dialogs.Owner;
         if (parent is null) return null;
 
-        var soundBank = new SoundBankService();
+        var soundBank = vm.Feature(vm.Session.Extensions.Get<SoundBankService>(), "El banco de sonidos");
         var window = NewWindow("Banco de Efectos de Sonido Libres de Regalías", 720, 520);
 
         var searchBox = new TextBox

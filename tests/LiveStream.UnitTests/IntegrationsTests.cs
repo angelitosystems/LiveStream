@@ -3,7 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LiveStream.Application.Abstractions;
-using LiveStream.Application.Integrations;
+using LiveStream.Extensions.Integrations;
 using LiveStream.Domain.Alerts;
 using LiveStream.Domain.Chat;
 using LiveStream.Domain.Entities;

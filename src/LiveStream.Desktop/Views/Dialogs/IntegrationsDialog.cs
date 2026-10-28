@@ -38,7 +38,7 @@ public static class IntegrationsDialog
         var window = NewWindow("Integraciones por plataforma", 840, 680);
         _open = window;
 
-        var vmIntegrations = vm.Integrations;
+        var vmIntegrations = vm.Feature(vm.Integrations, "Las integraciones");
         vmIntegrations.ReloadPlatforms();
 
         var platformsList = new StackPanel { Spacing = 4, Width = 220 };
@@ -195,7 +195,7 @@ public static class IntegrationsDialog
             ToolTip.SetTip(testBtn, "Simula un mensaje de chat y una alerta para validar en pantalla");
             testBtn.Click += (_, _) =>
             {
-                vm.Session.Integrations.SimulateMessage(new ChatMessage(
+                vm.Session.Extensions.Get<Extensions.Integrations.IntegrationManager>()?.SimulateMessage(new ChatMessage(
                     Id: Guid.NewGuid().ToString("N"),
                     Platform: p,
                     AuthorName: "UsuarioTest",
@@ -203,7 +203,7 @@ public static class IntegrationsDialog
                     Message: $"¡Probando integración con {platformName}!",
                     Timestamp: DateTime.UtcNow));
 
-                vm.Session.Integrations.SimulateAlert(new AlertEvent(
+                vm.Session.Extensions.Get<Extensions.Integrations.IntegrationManager>()?.SimulateAlert(new AlertEvent(
                     Id: Guid.NewGuid().ToString("N"),
                     Platform: p,
                     Kind: AlertKind.Follower,

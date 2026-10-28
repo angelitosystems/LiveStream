@@ -102,7 +102,8 @@ Más detalles (actualizaciones firmadas, firma de código, prueba de resistencia
 |---|---|
 | `native/livestream-bridge` | Puente C/C++ sobre libobs con una ABI C estable (motor, escenas, fuentes, filtros, animación, salidas, displays) |
 | `src/LiveStream.Domain` | Modelo del estudio: proyecto, escenas, fuentes, gráficos, destinos, animaciones |
-| `src/LiveStream.Application` | Casos de uso: comandos con deshacer, sesión, gráficos, multistream, optimización, herramientas del asistente |
+| `src/LiveStream.Application` | Núcleo: comandos con deshacer, sesión, gráficos, salidas, optimización, herramientas del asistente y el host de extensiones |
+| `src/LiveStream.Extensions` | Funcionalidades como extensiones ([arquitectura](docs/EXTENSIONES.md)): alertas, chat multicanal, TTS, donaciones, banco de sonidos, emisión dual |
 | `src/LiveStream.Infrastructure` | Persistencia (`.spproj`), claves cifradas con DPAPI, registro, cliente de Claude, actualizaciones firmadas |
 | `src/LiveStream.Native` | Interop .NET con el puente nativo |
 | `src/LiveStream.Desktop` | Aplicación Avalonia |

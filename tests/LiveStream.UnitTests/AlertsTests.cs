@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using LiveStream.Application.Alerts;
+using LiveStream.Extensions.Alerts;
 using LiveStream.Domain.Alerts;
 using LiveStream.Domain.Entities;
 using Xunit;

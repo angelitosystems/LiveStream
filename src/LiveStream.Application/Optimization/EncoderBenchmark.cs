@@ -238,7 +238,7 @@ public static class EncoderBenchmark
                 {
                     await engine.RemoveItemAsync(itemId, CancellationToken.None).ConfigureAwait(false);
                 }
-                catch { }
+                catch (Exception ex) { AppLog.Warn("optimizacion", $"Limpiar la prueba de codificador: {ex.Message}"); }
             }
 
             // 2. Detiene la grabación con seguridad
@@ -248,7 +248,7 @@ public static class EncoderBenchmark
                 {
                     await engine.StopRecordingAsync(CancellationToken.None).ConfigureAwait(false);
                 }
-                catch { }
+                catch (Exception ex) { AppLog.Warn("optimizacion", $"Limpiar la prueba de codificador: {ex.Message}"); }
             }
 
             // 3. Destruye la fuente de estrés
@@ -258,7 +258,7 @@ public static class EncoderBenchmark
                 {
                     await engine.RemoveSourceAsync(stressSourceId, CancellationToken.None).ConfigureAwait(false);
                 }
-                catch { }
+                catch (Exception ex) { AppLog.Warn("optimizacion", $"Limpiar la prueba de codificador: {ex.Message}"); }
             }
         }
     }

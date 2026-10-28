@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using LiveStream.Application.Assistant;
 using LiveStream.Application.Studio;
@@ -40,12 +41,12 @@ public sealed class PluginTests : IAsyncLifetime
         new(new Version(0, 9, 0), PublicKey, Path.Combine(_dir, "install"), Path.Combine(_dir, "data")) { DeveloperMode = developerMode };
 
     /// <summary>La salida compilada del plugin de ejemplo, con su manifiesto opcionalmente modificado.</summary>
-    private string ExampleSource(Func<JsonObject, JsonObject>? edit = null)
+    private string ExampleSource(Func<JsonObject, JsonObject>? edit = null, string project = "sdk/examples/HelloPlugin")
     {
         var root = AppContext.BaseDirectory;
         while (!File.Exists(Path.Combine(root, "LiveStream.sln")))
             root = Path.GetDirectoryName(root)!;
-        var exe = Directory.GetFiles(Path.Combine(root, "sdk", "examples", "HelloPlugin", "bin"), "HelloPlugin.exe", SearchOption.AllDirectories)
+        var exe = Directory.GetFiles(Path.Combine(root, project, "bin"), Path.GetFileName(project) + ".exe", SearchOption.AllDirectories)
             .OrderByDescending(File.GetLastWriteTimeUtc).First();
         var copy = Path.Combine(_dir, "src-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(copy);
@@ -171,6 +172,42 @@ public sealed class PluginTests : IAsyncLifetime
         store.SaveSettings(plugin, new Dictionary<string, string> { ["greeting"] = "Bienvenidos" });
         Assert.Equal("Bienvenidos", store.LoadSettings(plugin)["greeting"]);
         Assert.Throws<PluginValidationException>(() => store.SaveSettings(plugin, new Dictionary<string, string> { ["apiKey"] = "x" }));
+    }
+
+    [Fact]
+    public async Task An_update_that_does_not_start_is_rolled_back_to_the_working_version()
+    {
+        await using var manager = new PluginManager(Store(), Toolbox);
+        var (v1, s1) = PackAndSign(ExampleSource());
+        var installed = await manager.InstallAsync(v1, s1, "test", CancellationToken.None);
+        Assert.Equal(PluginRunState.Running, manager.Host(installed.Id)!.State);
+
+        // 1.0.1 con un ejecutable que termina sin hablar el protocolo: no supera initialize.
+        var broken = ExampleSource(m => { m["version"] = "1.0.1"; return m; });
+        File.Copy(Path.Combine(Environment.SystemDirectory, "whoami.exe"), Path.Combine(broken, "HelloPlugin.exe"), overwrite: true);
+        var (v2, s2) = PackAndSign(broken);
+
+        var error = await Assert.ThrowsAsync<PluginValidationException>(() => manager.InstallAsync(v2, s2, "test", CancellationToken.None));
+
+        Assert.Contains("Se restauró la 1.0.0", error.Message);
+        Assert.Equal("1.0.0", manager.Store.Find(installed.Id)!.Manifest.Version);
+        Assert.Equal(PluginRunState.Running, manager.Host(installed.Id)!.State);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "install", $".previous-{installed.Id}")));
+    }
+
+    [Fact]
+    public async Task A_working_update_discards_the_previous_version()
+    {
+        await using var manager = new PluginManager(Store(), Toolbox);
+        var (v1, s1) = PackAndSign(ExampleSource());
+        var installed = await manager.InstallAsync(v1, s1, "test", CancellationToken.None);
+        var (v2, s2) = PackAndSign(ExampleSource(m => { m["version"] = "1.0.1"; return m; }));
+
+        await manager.InstallAsync(v2, s2, "test", CancellationToken.None);
+
+        Assert.Equal("1.0.1", manager.Store.Find(installed.Id)!.Manifest.Version);
+        Assert.Equal(PluginRunState.Running, manager.Host(installed.Id)!.State);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "install", $".previous-{installed.Id}")));
     }
 
     // ---- Proceso aislado ----------------------------------------------------------------------

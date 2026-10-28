@@ -1075,7 +1075,7 @@ public static class ProductionDialogs
         if (vm.Dialogs.Owner is not { } owner)
             return;
 
-        var tts = vm.Tts;
+        var tts = vm.Feature(vm.Tts, "La lectura de chat");
         await tts.LoadVoicesAsync();
 
         var window = NewWindow("Lectura de chat por voz (TTS)", 780, 680);
@@ -1229,8 +1229,12 @@ public static class ProductionDialogs
         DockPanel.SetDock(fbVoiceCombo, Dock.Right);
 
         // Control de sonido de alertas globales
-        var soundAlertCheck = new CheckBox { Content = "Sonidos acústicos de alertas globales habilitados", IsChecked = !vm.Alerts.IsSoundMuted };
-        soundAlertCheck.IsCheckedChanged += (_, _) => vm.Alerts.IsSoundMuted = soundAlertCheck.IsChecked != true;
+        var soundAlertCheck = new CheckBox { Content = "Sonidos acústicos de alertas globales habilitados", IsChecked = vm.Alerts?.IsSoundMuted == false, IsEnabled = vm.Alerts is not null };
+        soundAlertCheck.IsCheckedChanged += (_, _) =>
+        {
+            if (vm.Alerts is { } alerts)
+                alerts.IsSoundMuted = soundAlertCheck.IsChecked != true;
+        };
 
         // Visualización de estado actual
         var nowPlayingBorder = new Border
@@ -1336,7 +1340,7 @@ public static class ProductionDialogs
         if (vm.Dialogs.Owner is not { } owner)
             return;
 
-        var alertsVm = vm.MonetaryAlerts;
+        var alertsVm = vm.Feature(vm.MonetaryAlerts, "Las donaciones");
         alertsVm.RefreshRules();
         alertsVm.RefreshHistory();
 

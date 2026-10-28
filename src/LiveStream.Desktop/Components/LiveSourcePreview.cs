@@ -5,6 +5,8 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using LiveStream.Desktop.ViewModels;
 using LiveStream.Domain.Entities;
+using LiveStream.Infrastructure.Diagnostics;
+using LiveStream.Native.Engine;
 
 namespace LiveStream.Desktop.Components;
 
@@ -202,17 +204,26 @@ public sealed class LiveSourcePreview : UserControl, IAsyncDisposable
         _height = Math.Max(1, h);
         if (_displayCreated && _vm is { EngineReady: true })
         {
-            try
-            {
-                await _vm.Engine.ResizeDisplayAsync(_displayId, _width, _height);
-            }
-            catch { }
+            await Logged("Redimensionar la vista previa", () => _vm.Engine.ResizeDisplayAsync(_displayId, _width, _height));
         }
     }
 
     private void OnNativeHandleDestroying()
     {
         _hwnd = 0;
+        if (_displayCreated && _vm is { EngineReady: true })
+        {
+            _displayCreated = false;
+            try
+            {
+                // Síncrono a propósito: libobs debe soltar el HWND antes de que se destruya (igual que el lienzo).
+                _vm.Engine.DestroyDisplayAsync(_displayId).GetAwaiter().GetResult();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or NativeEngineException)
+            {
+                AppLog.Warn("vista-previa", $"Liberar el display de la vista previa: {ex.Message}");
+            }
+        }
         _ = DisposeAsync();
     }
 
@@ -240,8 +251,9 @@ public sealed class LiveSourcePreview : UserControl, IAsyncDisposable
                 if (sw > 0 && sh > 0)
                     _resolutionText.Text = $"{sw}×{sh}";
             }
-            catch
+            catch (Exception ex) when (ex is InvalidOperationException or NativeEngineException)
             {
+                AppLog.Warn("vista-previa", $"Tamaño de la fuente {_sourceId}: {ex.Message}");
                 _resolutionText.Text = $"{_vm.Project.Canvas.Width}×{_vm.Project.Canvas.Height}";
             }
 
@@ -249,6 +261,7 @@ public sealed class LiveSourcePreview : UserControl, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            AppLog.Error("vista-previa", $"Vista previa de la fuente {_sourceId}", ex);
             _loadingPlaceholder.IsVisible = true;
             _loadingText.Text = $"Vista previa no disponible: {ex.Message}";
         }
@@ -272,12 +285,8 @@ public sealed class LiveSourcePreview : UserControl, IAsyncDisposable
 
         foreach (var filter in _source.Filters)
         {
-            try
-            {
-                // Si comparamos con el original: desactivar en motor. Si restauramos: devolver su estado real
-                await _vm.Engine.SetFilterEnabledAsync(filter.Id, _isComparingOriginal ? false : filter.Enabled, CancellationToken.None);
-            }
-            catch { }
+            // Si comparamos con el original: desactivar en motor. Si restauramos: devolver su estado real
+            await Logged($"Filtro «{filter.Name}»", () => _vm.Engine.SetFilterEnabledAsync(filter.Id, _isComparingOriginal ? false : filter.Enabled, CancellationToken.None));
         }
 
         CompareModeChanged?.Invoke(_isComparingOriginal);
@@ -293,11 +302,7 @@ public sealed class LiveSourcePreview : UserControl, IAsyncDisposable
         {
             foreach (var filter in _source.Filters)
             {
-                try
-                {
-                    await _vm.Engine.SetFilterEnabledAsync(filter.Id, filter.Enabled, CancellationToken.None);
-                }
-                catch { }
+                await Logged($"Restaurar filtro «{filter.Name}»", () => _vm.Engine.SetFilterEnabledAsync(filter.Id, filter.Enabled, CancellationToken.None));
             }
         }
 
@@ -305,15 +310,28 @@ public sealed class LiveSourcePreview : UserControl, IAsyncDisposable
         {
             if (_displayCreated)
             {
-                try { await _vm.Engine.DestroyDisplayAsync(_displayId, CancellationToken.None); } catch { }
+                await Logged("Liberar el display de la vista previa", () => _vm.Engine.DestroyDisplayAsync(_displayId, CancellationToken.None));
                 _displayCreated = false;
             }
 
             if (_sceneCreated)
             {
-                try { await _vm.Engine.RemoveSceneAsync(_previewSceneId, CancellationToken.None); } catch { }
+                await Logged("Quitar la escena de la vista previa", () => _vm.Engine.RemoveSceneAsync(_previewSceneId, CancellationToken.None));
                 _sceneCreated = false;
             }
+        }
+    }
+
+    /// <summary>Fallos del motor en la vista previa: se registran y no interrumpen el diálogo.</summary>
+    private static async Task Logged(string what, Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or NativeEngineException)
+        {
+            AppLog.Warn("vista-previa", $"{what}: {ex.Message}");
         }
     }
 }

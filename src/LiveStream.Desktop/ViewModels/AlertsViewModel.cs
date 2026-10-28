@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using LiveStream.Application.Alerts;
+using LiveStream.Extensions.Alerts;
 using LiveStream.Application.Studio;
 using LiveStream.Domain.Alerts;
 using LiveStream.Domain.Entities;
@@ -40,10 +40,10 @@ public sealed partial class AlertsViewModel : ObservableObject
         TestPlatform = platform;
     }
 
-    public AlertsViewModel(StudioSession session)
+    public AlertsViewModel(StudioSession session, AlertQueue queue)
     {
         _session = session;
-        _queue = session.Alerts;
+        _queue = queue;
 
         _queue.AlertStarted += (_, state) =>
         {

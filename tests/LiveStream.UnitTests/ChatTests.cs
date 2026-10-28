@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using LiveStream.Application.Chat;
+using LiveStream.Extensions.Chat;
 using LiveStream.Domain.Chat;
 using LiveStream.Domain.Entities;
 using Xunit;

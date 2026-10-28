@@ -17,6 +17,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
@@ -57,6 +59,114 @@ void log_handler(int level, const char *format, va_list args, void *)
     std::vsnprintf(buffer, sizeof(buffer), format, args);
     g_log_callback(static_cast<sp_log_level>(level), buffer, g_log_user_data);
 }
+
+// ---- Tareas de UI de libobs --------------------------------------------------------------------
+// libobs y sus plugins encolan OBS_TASK_UI esperando el hilo de interfaz de OBS (Qt); sin manejador se descartan
+// ("UI task could not be queued"). Aquí no hay Qt: un hilo propio (COM STA) las ejecuta en orden. No se reenvían a
+// .NET porque algunas llegan durante obs_shutdown, cuando el runtime puede estar cerrándose (igual que el log).
+class ui_task_thread {
+public:
+    static ui_task_thread &instance()
+    {
+        static ui_task_thread thread;
+        return thread;
+    }
+
+    // obs_queue_task(OBS_TASK_UI, ...) llega aquí desde cualquier hilo de libobs.
+    static void handler(obs_task_t task, void *param, bool wait) { instance().enqueue(task, param, wait); }
+
+    void start()
+    {
+        std::lock_guard lock(mutex_);
+        if (thread_.joinable())
+            return;
+        stopping_ = false;
+        thread_ = std::thread([this] { run(); });
+    }
+
+    // Después de obs_shutdown: ejecuta lo pendiente (puede haber quien espere) y termina el hilo.
+    void stop()
+    {
+        {
+            std::lock_guard lock(mutex_);
+            if (!thread_.joinable())
+                return;
+            stopping_ = true;
+        }
+        cv_.notify_all();
+        thread_.join();
+        std::lock_guard lock(mutex_);
+        thread_ = std::thread();
+    }
+
+private:
+    struct item {
+        obs_task_t task;
+        void *param;
+        bool *done; // no nulo si quien encola espera
+    };
+
+    void enqueue(obs_task_t task, void *param, bool wait)
+    {
+        std::unique_lock lock(mutex_);
+        // Sin hilo, apagándose o desde el propio hilo: en línea (esperarse a sí mismo bloquearía para siempre).
+        if (!thread_.joinable() || stopping_ || std::this_thread::get_id() == id_) {
+            lock.unlock();
+            task(param);
+            return;
+        }
+        bool done = false;
+        queue_.push_back({task, param, wait ? &done : nullptr});
+        cv_.notify_all();
+        if (wait)
+            cv_.wait(lock, [&] { return done; });
+    }
+
+    void run()
+    {
+        const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        std::unique_lock lock(mutex_);
+        id_ = std::this_thread::get_id();
+        for (;;) {
+            cv_.wait(lock, [&] { return stopping_ || !queue_.empty(); });
+            while (!queue_.empty()) {
+                const item next = queue_.front();
+                queue_.pop_front();
+                lock.unlock();
+                next.task(next.param);
+                pump_messages();
+                lock.lock();
+                if (next.done) {
+                    *next.done = true;
+                    cv_.notify_all();
+                }
+            }
+            if (stopping_)
+                break;
+        }
+        id_ = std::thread::id();
+        lock.unlock();
+        if (SUCCEEDED(com))
+            CoUninitialize();
+    }
+
+    // Un objeto COM de apartamento único creado por una tarea puede necesitar que su hilo atienda mensajes.
+    static void pump_messages()
+    {
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::deque<item> queue_;
+    std::thread thread_;
+    std::thread::id id_;
+    bool stopping_ = false;
+};
 
 template<typename Fn> sp_result guarded(Fn &&fn)
 {
@@ -297,6 +407,9 @@ void draw_solid(const vec4 &color, gs_draw_mode mode, const std::vector<vec3> &p
         for (const auto &p : points)
             gs_vertex2f(p.x, p.y);
         gs_render_stop(mode);
+        // gs_render_stop(true) destruye su vertex buffer sin descargarlo: el dispositivo d3d11 se quedaría con un
+        // puntero colgante que el siguiente gs_draw sin buffer propio (conversión de vídeo async) usaría tras liberarse.
+        gs_load_vertexbuffer(nullptr);
     }
 }
 
@@ -897,6 +1010,7 @@ sp_result SP_CALL sp_engine_create(const sp_engine_config *config, sp_engine **o
                 obs_shutdown();
                 g_engine_was_shutdown = true;
             }
+            ui_task_thread::instance().stop();
             g_engine_alive = false;
             return fail(code, msg);
         };
@@ -917,6 +1031,9 @@ sp_result SP_CALL sp_engine_create(const sp_engine_config *config, sp_engine **o
         // Sin module_config_dir los plugins escriben su configuración en el directorio de trabajo.
         if (!obs_startup("es-ES", config->module_config_dir, nullptr))
             return abort_startup(SP_ERR_STARTUP_FAILED, "obs_startup falló.");
+        // Antes de cargar los módulos (algunos encolan tareas de UI al cargarse) y vivo hasta después de obs_shutdown.
+        ui_task_thread::instance().start();
+        obs_set_ui_task_handler(ui_task_thread::handler);
 
         obs_audio_info oai{};
         oai.samples_per_sec = config->audio_sample_rate ? config->audio_sample_rate : 48000;
@@ -1037,6 +1154,7 @@ void SP_CALL sp_engine_destroy(sp_engine *engine)
         obs_wait_for_destroy_queue();
         obs_shutdown();
         g_engine_was_shutdown = true;
+        ui_task_thread::instance().stop();
 #ifdef _WIN32
         RtwqShutdown();
 #endif

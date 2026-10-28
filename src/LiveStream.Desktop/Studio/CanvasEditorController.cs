@@ -76,11 +76,8 @@ public sealed class CanvasEditorController : IDisposable
         {
             (_width, _height) = (w, h);
             RecomputeFit();
-            if (_displayCreated)
-            {
-                await _vm.Engine.ResizeDisplayAsync(_displayId, w, h);
+            if (_displayCreated && await Safe(() => _vm.Engine.ResizeDisplayAsync(_displayId, w, h)))
                 await ApplyViewAsync();
-            }
         };
         host.NativeHandleDestroying += () =>
         {
@@ -372,6 +369,7 @@ public sealed class CanvasEditorController : IDisposable
         }
         catch (Exception ex) when (ex is InvalidOperationException or Native.Engine.NativeEngineException or ObjectDisposedException)
         {
+            Infrastructure.Diagnostics.AppLog.Warn("lienzo", ex.ToString());
             _vm.StatusMessage = ex.Message;
             return false;
         }
@@ -393,13 +391,13 @@ public sealed class ProgramDisplayController(MainViewModel vm)
         host.NativeHandleCreated += async (hwnd, w, h) =>
         {
             (_hwnd, _width, _height) = (hwnd, w, h);
-            await EnsureAsync();
+            await Logged("Crear la salida de programa", EnsureAsync);
         };
         host.NativeHandleResized += async (w, h) =>
         {
             (_width, _height) = (w, h);
             if (_created)
-                await vm.Engine.ResizeDisplayAsync(_displayId, w, h);
+                await Logged("Redimensionar la salida de programa", () => vm.Engine.ResizeDisplayAsync(_displayId, w, h));
         };
         host.NativeHandleDestroying += () =>
         {
@@ -417,7 +415,7 @@ public sealed class ProgramDisplayController(MainViewModel vm)
         vm.PropertyChanged += async (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.EngineReady))
-                await EnsureAsync();
+                await Logged("Crear la salida de programa", EnsureAsync);
         };
     }
 
@@ -428,5 +426,19 @@ public sealed class ProgramDisplayController(MainViewModel vm)
         await vm.Engine.CreateDisplayAsync(_displayId, _hwnd, _width, _height);
         await vm.Engine.SetDisplaySourceAsync(_displayId, null); // salida de programa
         _created = true;
+    }
+
+    /// <summary>Estos manejadores son async void: un fallo del motor se registra y se muestra en vez de cerrar la app.</summary>
+    private async Task Logged(string what, Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Native.Engine.NativeEngineException or ObjectDisposedException)
+        {
+            Infrastructure.Diagnostics.AppLog.Error("lienzo", what, ex);
+            vm.StatusMessage = $"{what}: {ex.Message}";
+        }
     }
 }

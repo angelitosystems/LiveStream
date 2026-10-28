@@ -161,7 +161,10 @@ colar ni alterar plugins.
   aceptando la 1 durante al menos una versión mayor.
 - **Herramientas**: sus nombres y argumentos actuales no cambian de significado dentro de la API v1.
 - **Actualizaciones**: el marketplace ofrece la última versión no retirada, compatible y firmada. Al actualizar, se
-  conserva si el plugin estaba activo y también sus ajustes.
+  conserva si el plugin estaba activo y también sus ajustes. Si la versión nueva no arranca (por ejemplo, no responde
+  a `initialize`), LiveStream restaura la anterior, la vuelve a poner en marcha y muestra el motivo. Una actualización
+  firmada que no pide permisos nuevos no vuelve a pedir consentimiento; si añade alguno, se muestran antes de instalar.
+  «Actualizar todo» las aplica de una en una: si una falla, las demás siguen.
 - **Configuración**: `plugins.json` lleva un número de esquema con un punto único de migración (`PluginStore.Migrate`).
 
 ## 8. Errores frecuentes

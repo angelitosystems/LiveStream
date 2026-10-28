@@ -4,7 +4,7 @@ using System.Linq;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using LiveStream.Application.Alerts;
+using LiveStream.Extensions.Alerts;
 using LiveStream.Domain.Alerts;
 using LiveStream.Domain.Entities;
 

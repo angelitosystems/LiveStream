@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using LiveStream.Application.DualStreaming;
+using LiveStream.Extensions.DualStreaming;
 using LiveStream.Application.Studio;
 using LiveStream.Domain.Compositions;
 using LiveStream.Domain.Entities;

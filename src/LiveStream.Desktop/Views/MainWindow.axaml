@@ -41,6 +41,7 @@
           <MenuItem Header="_Archivo">
             <MenuItem Header="Nuevo proyecto horizontal (1920x1080)" Command="{Binding NewProjectCommand}" CommandParameter="horizontal" />
             <MenuItem Header="Nuevo proyecto vertical (1080x1920)" Command="{Binding NewProjectCommand}" CommandParameter="vertical" />
+            <Separator />
             <MenuItem Header="Abrir proyecto…" Command="{Binding OpenProjectCommand}" InputGesture="Ctrl+O" />
             <Separator />
             <MenuItem Header="Guardar" Command="{Binding SaveProjectCommand}" InputGesture="Ctrl+S" />
@@ -71,6 +72,7 @@
             <MenuItem Header="Modo estudio" Command="{Binding ToggleStudioModeCommand}">
               <MenuItem.Icon><CheckBox IsChecked="{Binding StudioMode, Mode=OneWay}" IsHitTestVisible="False" /></MenuItem.Icon>
             </MenuItem>
+            <Separator />
             <MenuItem Header="Ajustar lienzo a la ventana" Click="OnFitView" InputGesture="Ctrl+0" />
             <MenuItem Header="Acercar" Click="OnZoomIn" InputGesture="Ctrl+OemPlus" />
             <MenuItem Header="Alejar" Click="OnZoomOut" InputGesture="Ctrl+OemMinus" />
@@ -79,23 +81,28 @@
           </MenuItem>
           <MenuItem Header="_Perfil">
             <MenuItem Header="{Binding CanvasText}" IsEnabled="False" />
-                          <MenuItem Header="Integraciones por plataforma (YouTube, Twitch, TikTok…)…" Click="OnIntegrations" />
+            <Separator />
+                          <MenuItem Header="Integraciones por plataforma (YouTube, Twitch, TikTok…)…" Click="OnIntegrations" IsVisible="{Binding ChatShown}" />
               <MenuItem Header="Destinos de emisión (multistream)…" Click="OnDestinations" />
+            <Separator />
             <MenuItem Header="Ajustes de transmisión, grabación y video…" Click="OnSettings" />
           </MenuItem>
           <MenuItem Header="_Herramientas">
             <MenuItem Header="Propiedades de la fuente…" Click="OnProperties" />
             <MenuItem Header="Filtros de la fuente…" Click="OnSourceFilters" />
             <MenuItem Header="Ajustes de la transición…" Click="OnTransitionSettings" />
+            <Separator />
             <MenuItem Header="Kit de marca…" Click="OnBrandKit" />
             <MenuItem Header="Biblioteca de recursos de gráficos…" Click="OnResourceLibrary" />
-            <MenuItem Header="Marketplace de plugins…" Click="OnMarketplace" />
+            <Separator IsVisible="{Binding ProductionToolsShown}" />
+            <MenuItem Header="Editor visual de alertas y plantillas…" Click="OnAlertDesigner" IsVisible="{Binding AlertsShown}" />
+            <MenuItem Header="Banco de efectos de sonido libres…" Click="OnSoundBank" IsVisible="{Binding SoundBankShown}" />
+            <MenuItem Header="Voces y lectura de chat (TTS)…" Click="OnTtsSettings" IsVisible="{Binding TtsShown}" />
+            <MenuItem Header="Donaciones, regalos y recompensas…" Click="OnMonetaryAlerts" IsVisible="{Binding DonationsShown}" />
+            <Separator />
+            <MenuItem Header="Extensiones y plugins…" Click="OnMarketplace" />
             <MenuItem Header="Rendimiento y optimización…" Click="OnPerformance" />
             <Separator />
-            <MenuItem Header="Editor visual de alertas y plantillas…" Click="OnAlertDesigner" />
-            <MenuItem Header="Banco de efectos de sonido libres…" Click="OnSoundBank" />
-            <MenuItem Header="Voces y lectura de chat (TTS)…" Click="OnTtsSettings" />
-            <MenuItem Header="Donaciones, regalos y recompensas…" Click="OnMonetaryAlerts" />
             <MenuItem Header="Abrir carpeta de grabaciones" Click="OnOpenRecordings" />
             <MenuItem Header="Abrir carpeta de proyectos" Click="OnOpenProjects" />
             <MenuItem Header="Abrir registros de diagnóstico" Click="OnOpenLogs" />
@@ -103,6 +110,7 @@
           <MenuItem Header="Ay_uda">
             <MenuItem Header="Atajos de teclado" Click="OnShortcuts" />
             <MenuItem Header="Buscar actualizaciones…" Click="OnCheckUpdates" />
+            <Separator />
             <MenuItem Header="Acerca de LiveStream" Click="OnAbout" />
           </MenuItem>
         </Menu>

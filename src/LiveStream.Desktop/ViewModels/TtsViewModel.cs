@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using LiveStream.Application.Tts;
+using LiveStream.Extensions.Tts;
 using LiveStream.Domain.Entities;
 using LiveStream.Domain.Tts;
 
@@ -96,7 +96,7 @@ public sealed partial class TtsViewModel : ObservableObject
                 SelectedFacebookVoice = AvailableVoices.FirstOrDefault(v => v.Id == _coordinator.GetRuleFor(StreamPlatform.Facebook).CustomVoiceId);
             });
         }
-        catch { }
+        catch (Exception ex) { Infrastructure.Diagnostics.AppLog.Warn("tts", $"Cargar las voces: {ex.Message}"); }
     }
 
     partial void OnEnabledChanged(bool value)

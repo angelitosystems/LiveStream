@@ -103,8 +103,14 @@ public sealed class PluginStore
         return manifest;
     }
 
-    /// <summary>Instala o actualiza (el plugin debe estar detenido). Una actualización conserva si estaba activo.</summary>
-    public InstalledPlugin Install(string packagePath, PackageSignature? signature, string source, bool enable)
+    // Versión anterior de cada actualización aún sin confirmar: carpeta y registro, para poder volver atrás.
+    private readonly Dictionary<string, (string Directory, PluginRecord Record)> _previous = [];
+
+    /// <summary>
+    /// Instala o actualiza (el plugin debe estar detenido). Una actualización conserva si estaba activo. Con
+    /// <paramref name="keepPrevious"/> la versión anterior se guarda hasta <see cref="CommitUpdate"/> o <see cref="RollBack"/>.
+    /// </summary>
+    public InstalledPlugin Install(string packagePath, PackageSignature? signature, string source, bool enable, bool keepPrevious = false)
     {
         var manifest = Verify(packagePath, signature);
         Directory.CreateDirectory(InstallRoot);
@@ -112,10 +118,13 @@ public sealed class PluginStore
         PluginPackage.Extract(packagePath, staging);
 
         var target = Path.Combine(InstallRoot, manifest.Id);
-        var old = Path.Combine(InstallRoot, $".old-{Guid.NewGuid():N}");
+        var old = keepPrevious ? Path.Combine(InstallRoot, $".previous-{manifest.Id}") : Path.Combine(InstallRoot, $".old-{Guid.NewGuid():N}");
         lock (_lock)
         {
-            if (Directory.Exists(target))
+            CommitUpdate(manifest.Id); // una vuelta atrás pendiente de otra actualización ya no aplica
+            TryDelete(old);
+            var hadPrevious = Directory.Exists(target);
+            if (hadPrevious)
                 Directory.Move(target, old);
             try
             {
@@ -128,16 +137,59 @@ public sealed class PluginStore
                 TryDelete(staging);
                 throw;
             }
-            TryDelete(old);
-            Directory.CreateDirectory(DataDirectory(manifest.Id));
-
             var state = Load();
             var wasEnabled = state.Plugins.TryGetValue(manifest.Id, out var previous) && previous.Enabled;
+            if (keepPrevious && hadPrevious && previous is not null)
+                _previous[manifest.Id] = (old, previous);
+            else
+                TryDelete(old);
+            Directory.CreateDirectory(DataDirectory(manifest.Id));
+
             var record = new PluginRecord(manifest.Version, enable || wasEnabled, signature is not null, source, DateTimeOffset.UtcNow);
             state.Plugins[manifest.Id] = record;
             Save(state);
             return new InstalledPlugin(manifest, record, target);
         }
+    }
+
+    /// <summary>La actualización funciona: se borra la versión anterior guardada.</summary>
+    public void CommitUpdate(string id)
+    {
+        lock (_lock)
+        {
+            if (_previous.Remove(id, out var previous))
+                TryDelete(previous.Directory);
+        }
+    }
+
+    /// <summary>Restaura la versión anterior guardada por una actualización; null si no hay ninguna.</summary>
+    public InstalledPlugin? RollBack(string id)
+    {
+        lock (_lock)
+        {
+            if (!_previous.TryGetValue(id, out var previous) || !Directory.Exists(previous.Directory))
+                return null;
+            var target = Path.Combine(InstallRoot, id);
+            // El proceso de la versión fallida acaba de cerrarse: Windows (o el antivirus) puede retener sus archivos un
+            // instante. Si sigue bloqueado tras los reintentos, el error sube y la versión anterior sigue guardada.
+            for (var attempt = 1; Directory.Exists(target); attempt++)
+            {
+                try
+                {
+                    Directory.Delete(target, recursive: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 30)
+                {
+                    Thread.Sleep(100);
+                }
+            }
+            Directory.Move(previous.Directory, target);
+            _previous.Remove(id);
+            var state = Load();
+            state.Plugins[id] = previous.Record;
+            Save(state);
+        }
+        return Find(id);
     }
 
     /// <summary>Quita código, datos y registro. Se niega si otro plugin instalado depende de este.</summary>

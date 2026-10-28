@@ -7,7 +7,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LiveStream.Application.Abstractions;
-using LiveStream.Application.Integrations;
+using LiveStream.Extensions.Integrations;
 using LiveStream.Application.Studio;
 using LiveStream.Domain.Entities;
 using LiveStream.Domain.Integrations;
@@ -32,10 +32,10 @@ public sealed partial class IntegrationsViewModel : ObservableObject
     [ObservableProperty] private string _statusMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
 
-    public IntegrationsViewModel(StudioSession session, ISecretStore secrets)
+    public IntegrationsViewModel(StudioSession session, IntegrationManager manager, ISecretStore secrets)
     {
         _session = session;
-        _manager = session.Integrations;
+        _manager = manager;
         _secrets = secrets;
 
         _manager.StatusChanged += (_, ev) =>

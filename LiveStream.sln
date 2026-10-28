@@ -35,6 +35,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HelloPlugin", "sdk\examples
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiveStream.PluginTool", "tools\LiveStream.PluginTool\LiveStream.PluginTool.csproj", "{86413D43-1C57-4864-AE35-34BC3821003C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiveStream.Extensions", "src\LiveStream.Extensions\LiveStream.Extensions.csproj", "{FF42DE22-D1D2-4223-A080-8102706638CE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -189,6 +191,18 @@ Global
 		{86413D43-1C57-4864-AE35-34BC3821003C}.Release|x64.Build.0 = Release|Any CPU
 		{86413D43-1C57-4864-AE35-34BC3821003C}.Release|x86.ActiveCfg = Release|Any CPU
 		{86413D43-1C57-4864-AE35-34BC3821003C}.Release|x86.Build.0 = Release|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Debug|x64.Build.0 = Debug|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Debug|x86.Build.0 = Debug|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Release|x64.ActiveCfg = Release|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Release|x64.Build.0 = Release|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Release|x86.ActiveCfg = Release|Any CPU
+		{FF42DE22-D1D2-4223-A080-8102706638CE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -206,5 +220,6 @@ Global
 		{2CA1C483-AFBC-4A36-811A-20531D311796} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F8F0CF1F-1E81-4D2E-8B8A-462E482BC9CB} = {FF13A09E-0E72-1904-124B-A4E979EF28D3}
 		{86413D43-1C57-4864-AE35-34BC3821003C} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{FF42DE22-D1D2-4223-A080-8102706638CE} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

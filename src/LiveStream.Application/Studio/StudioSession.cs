@@ -1,12 +1,8 @@
 using LiveStream.Application.Abstractions;
-using LiveStream.Application.Alerts;
-using LiveStream.Application.Chat;
 using LiveStream.Application.Commands;
-using LiveStream.Application.DualStreaming;
+using LiveStream.Application.Extensions;
 using LiveStream.Application.Graphics;
-using LiveStream.Application.Integrations;
 using LiveStream.Application.Streaming;
-using LiveStream.Application.Tts;
 using LiveStream.Domain.Alerts;
 using LiveStream.Domain.Entities;
 using LiveStream.Domain.Graphics;
@@ -25,8 +21,11 @@ public sealed class StudioSession : IAsyncDisposable
     private readonly TimeSpan _autosaveDelay;
     private CancellationTokenSource? _autosaveCts;
 
+    // El proyecto no es seguro entre hilos: lo que llega de conectores y temporizadores se lleva al hilo que creó la sesión (la UI).
+    private readonly SynchronizationContext? _owner = SynchronizationContext.Current;
+
     public StudioSession(IStreamingEngine engine, IProjectRepository repository, ISecretStore secrets, StudioProject project,
-        string projectPath, TimeSpan? autosaveDelay = null)
+        string projectPath, TimeSpan? autosaveDelay = null, IExtensionStateStore? extensionState = null)
     {
         Engine = engine;
         _repository = repository;
@@ -38,123 +37,39 @@ public sealed class StudioSession : IAsyncDisposable
         Graphics = new GraphicsService(Executor);
         Destinations = new StreamSupervisor(this);
 
-        Integrations = new IntegrationManager(_secrets);
-        Chat = new UnifiedChatService();
-        ChatOverlay = new ChatOverlayService(this, Chat);
-        Alerts = new AlertQueue();
-        DualStream = new DualStreamCoordinator(this);
+        Extensions = new ExtensionHost(this, secrets, extensionState ?? new InMemoryExtensionStateStore());
+    }
 
-        TtsProvider = new WindowsSapiTtsProvider();
-        Tts = new TtsQueueService(TtsProvider);
-        ChatTts = new ChatTtsCoordinator(Chat, Tts);
-        ChannelPoints = new ChannelPointsService();
-        MonetaryAlerts = new MonetaryAlertService(Tts, Alerts, ChannelPoints);
-
-        Integrations.MessageReceived += (_, msg) => Chat.AddMessage(msg);
-        Integrations.AlertReceived += (_, alert) =>
-        {
-            MonetaryAlerts.ProcessIncomingAlert(alert);
-            var rule = AlertProcessor.FindMatchingRule(Project.AlertRules, alert);
-            if (rule is not null)
-                Alerts.Enqueue(alert, rule);
-        };
-        Chat.AutoGreetingTriggered += (_, alert) =>
-        {
-            var rule = AlertProcessor.FindMatchingRule(Project.AlertRules, alert);
-            if (rule is not null)
-                Alerts.Enqueue(alert, rule);
-        };
-        Alerts.AlertStarted += async (_, active) =>
+    /// <summary>Ejecuta <paramref name="action"/> en el hilo dueño del proyecto; un fallo se registra y no tumba la app.</summary>
+    public void OnOwnerThread(string what, Func<Task> action)
+    {
+        async void Run()
         {
             try
             {
-                // Reproducción acústica instantánea en cola secuencial
-                if (!string.IsNullOrWhiteSpace(active.Rule.SoundPath))
-                {
-                    SoundPlayerService.Play(active.Rule.SoundPath);
-                }
-                else
-                {
-                    var defaultSound = active.Rule.Kind switch
-                    {
-                        AlertKind.Follower => "ding_notification.wav",
-                        AlertKind.Subscription => "level_up.wav",
-                        AlertKind.Donation => "arcade_coin.wav",
-                        AlertKind.SuperChat => "victory_arpeggio.wav",
-                        AlertKind.Raid => "fanfare_tada.wav",
-                        AlertKind.Greeting => "chime_bell.wav",
-                        _ => "ding_notification.wav"
-                    };
-                    SoundPlayerService.Play(defaultSound);
-                }
-
-                var alertGraphic = Project.Graphics.FirstOrDefault(g => g.Kind == GraphicKind.Alert);
-                if (alertGraphic is not null && Engine.IsInitialized)
-                {
-                    var updated = alertGraphic with
-                    {
-                        Fields = new Dictionary<string, string>(alertGraphic.Fields)
-                        {
-                            ["title"] = active.Rule.Name,
-                            ["message"] = active.FormattedText
-                        }
-                    };
-                    Project.ReplaceGraphic(updated);
-                    await Graphics.TakeInAsync(alertGraphic.Id).ConfigureAwait(false);
-                }
+                await action();
             }
-            catch { }
-        };
-        Alerts.AlertCompleted += async (_, active) =>
-        {
-            try
+            catch (Exception ex)
             {
-                var alertGraphic = Project.Graphics.FirstOrDefault(g => g.Kind == GraphicKind.Alert);
-                if (alertGraphic is not null && Engine.IsInitialized)
-                {
-                    await Graphics.TakeOutAsync(alertGraphic.Id).ConfigureAwait(false);
-                }
+                AppLog.Error("session", what, ex);
             }
-            catch { }
-        };
+        }
+
+        if (_owner is null || SynchronizationContext.Current == _owner)
+            Run();
+        else
+            _owner.Post(_ => Run(), null);
     }
 
     public IStreamingEngine Engine { get; }
     public CommandExecutor Executor { get; }
     public ISecretStore Secrets => _secrets;
 
-    /// <summary>Gestor de integraciones oficiales multiplataforma (YouTube, Twitch, TikTok, Facebook, Instagram).</summary>
-    public IntegrationManager Integrations { get; }
-
-    /// <summary>Chat unificado con filtros, moderación y selección para directo.</summary>
-    public UnifiedChatService Chat { get; }
-
-    /// <summary>Servicio de superposición de chat en pantalla.</summary>
-    public ChatOverlayService ChatOverlay { get; }
-
-    /// <summary>Centro y cola de eventos y alertas en directo.</summary>
-    public AlertQueue Alerts { get; }
-
-    /// <summary>Coordinador de composición y emisión dual simultánea (Horizontal 16:9 y Vertical 9:16).</summary>
-    public DualStreamCoordinator DualStream { get; }
+    /// <summary>Funcionalidades desacopladas del núcleo (alertas, chat, TTS, donaciones…): las añade la composición de la app.</summary>
+    public ExtensionHost Extensions { get; }
 
     /// <summary>Operación en directo de los gráficos (al aire, cuentas atrás, datos en vivo).</summary>
     public GraphicsService Graphics { get; }
-
-    /// <summary>Proveedor central de síntesis de voz (TTS).</summary>
-    public ITtsProvider TtsProvider { get; }
-
-    /// <summary>Cola y motor de reproducción de voz en directo.</summary>
-    public TtsQueueService Tts { get; }
-
-    /// <summary>Coordinador de lectura de chat unificado por voz.</summary>
-    public ChatTtsCoordinator ChatTts { get; }
-
-    /// <summary>Economía de puntos y recompensas virtuales del canal.</summary>
-    public ChannelPointsService ChannelPoints { get; }
-
-    /// <summary>Servicio de alertas monetarias, donaciones y regalos multiplataforma.</summary>
-    public MonetaryAlertService MonetaryAlerts { get; }
 
     public StudioProject Project => Executor.Context.Project;
     public string ProjectPath { get; private set; }
@@ -366,12 +281,8 @@ public sealed class StudioSession : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await Extensions.DisposeAsync().ConfigureAwait(false);
         await Graphics.DisposeAsync().ConfigureAwait(false);
-        await Integrations.DisposeAsync().ConfigureAwait(false);
-        ChatOverlay.Dispose();
-        Alerts.Dispose();
-        Tts.Dispose();
-        TtsProvider.Dispose();
         _autosaveCts?.Cancel();
         try
         {

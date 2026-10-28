@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CS0067</NoWarn>
+  </PropertyGroup>
+  <!-- Funcionalidades del estudio como extensiones integradas: dependen del núcleo (Application), nunca al revés. -->
+  <ItemGroup>
+    <ProjectReference Include="..\LiveStream.Application\LiveStream.Application.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Speech" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="LiveStream.Application" />
+  </ItemGroup>
+</Project>

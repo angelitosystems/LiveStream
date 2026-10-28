@@ -42,6 +42,10 @@ public sealed class StudioDockHost : Grid
     private readonly Dictionary<string, int> _activeTabBySlot = [];
     private readonly Dictionary<string, FloatingDockWindow> _floatingWindows = [];
     private readonly List<Control> _slotControls = [];
+
+    // Paneles que no se dibujan (p. ej. su extensión está desactivada). Siguen en _slots, así que la distribución
+    // guardada los conserva y al mostrarse vuelven a su sitio.
+    private readonly HashSet<string> _hidden = [];
     private readonly MachineSettingsStore _settingsStore;
 
     // Estado del sistema Drag & Drop
@@ -173,6 +177,19 @@ public sealed class StudioDockHost : Grid
             AttachHeaderDragGrip(def);
         }
     }
+
+    /// <summary>Oculta o vuelve a mostrar un panel sin sacarlo de la distribución guardada.</summary>
+    public void SetPanelHidden(string panelId, bool hidden)
+    {
+        if (hidden ? !_hidden.Add(panelId) : !_hidden.Remove(panelId))
+            return;
+        // Una ventana flotante se vuelve a acoplar: así se oculta y se recuerda su sitio como los demás.
+        if (hidden && _floatingWindows.TryGetValue(panelId, out var floating))
+            floating.Reattach();
+        RebuildGrid();
+    }
+
+    public bool IsPanelHidden(string panelId) => _hidden.Contains(panelId);
 
     public void InitializeLayout(string? defaultLayout = null)
     {
@@ -423,14 +440,19 @@ public sealed class StudioDockHost : Grid
         ColumnDefinitions.Clear();
         _slotControls.Clear();
 
-        if (_slots.Count == 0)
+        // Cada columna con sus paneles visibles; una columna sin ninguno no se dibuja. El índice es el de _slots,
+        // que es al que se refieren las acciones de arrastrar, mover y maximizar.
+        var visible = _slots.Select((panels, index) => (Index: index, Panels: panels.Where(id => !_hidden.Contains(id)).ToList()))
+            .Where(slot => slot.Panels.Count > 0)
+            .ToList();
+        if (visible.Count == 0)
             return;
 
         // Modo maximizado: solo un slot visible ocupando todo el ancho
-        if (_maximizedSlotIndex.HasValue && _maximizedSlotIndex.Value >= 0 && _maximizedSlotIndex.Value < _slots.Count)
+        if (_maximizedSlotIndex is { } maximized && visible.FirstOrDefault(v => v.Index == maximized) is { Panels: not null } shown)
         {
             ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
-            var slotControl = BuildSlotControl(_maximizedSlotIndex.Value, _slots[_maximizedSlotIndex.Value]);
+            var slotControl = BuildSlotControl(shown.Index, shown.Panels);
             SetColumn(slotControl, 0);
             Children.Add(slotControl);
             _slotControls.Add(slotControl);
@@ -440,19 +462,19 @@ public sealed class StudioDockHost : Grid
 
         // Modo regular de múltiples columnas con separadores Splitter
         var colDefs = new ColumnDefinitions();
-        for (var i = 0; i < _slots.Count; i++)
+        for (var i = 0; i < visible.Count; i++)
         {
             if (i > 0)
                 colDefs.Add(new ColumnDefinition(6, GridUnitType.Pixel));
 
-            var count = _slots[i].Count;
+            var count = visible[i].Panels.Count;
             var weight = Math.Max(1.0, Math.Min(1.8, 1.0 + (count - 1) * 0.35));
             colDefs.Add(new ColumnDefinition(weight, GridUnitType.Star));
         }
         ColumnDefinitions = colDefs;
 
         var colIndex = 0;
-        for (var i = 0; i < _slots.Count; i++)
+        for (var i = 0; i < visible.Count; i++)
         {
             if (i > 0)
             {
@@ -466,8 +488,7 @@ public sealed class StudioDockHost : Grid
                 colIndex++;
             }
 
-            var slotPanels = _slots[i];
-            var slotControl = BuildSlotControl(i, slotPanels);
+            var slotControl = BuildSlotControl(visible[i].Index, visible[i].Panels);
             SetColumn(slotControl, colIndex);
             Children.Add(slotControl);
             _slotControls.Add(slotControl);
@@ -1098,7 +1119,7 @@ public sealed class StudioDockHost : Grid
             Header = "Unir en pestañas con…",
             Icon = new Glyph { Data = TryGeometry("Icon.Layers"), Width = 14, Height = 14 },
         };
-        foreach (var other in _registered.Where(r => r.Id != panelId))
+        foreach (var other in _registered.Where(r => r.Id != panelId && !_hidden.Contains(r.Id)))
         {
             var otherId = other.Id;
             var item = new MenuItem

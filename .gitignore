@@ -12,3 +12,6 @@ graphify-out/
 
 # Mapa local de checkout separados (SDK y marketplace viven en sus propios repos).
 folders.json
+
+# El código de los plugins es privado: vive en LiveStream-Marketplace, nunca en este repositorio público.
+/plugins/

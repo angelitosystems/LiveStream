@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LiveStream.Application\LiveStream.Application.csproj" />
+    <ProjectReference Include="..\LiveStream.Extensions\LiveStream.Extensions.csproj" />
     <ProjectReference Include="..\LiveStream.Native\LiveStream.Native.csproj" />
     <ProjectReference Include="..\LiveStream.Infrastructure\LiveStream.Infrastructure.csproj" />
   </ItemGroup>

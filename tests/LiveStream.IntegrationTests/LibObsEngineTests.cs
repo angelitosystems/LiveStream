@@ -58,6 +58,10 @@ public sealed class LibObsEngineTests(ITestOutputHelper output)
             await using var second = new LibObsEngine();
             var ex = await Assert.ThrowsAsync<NativeEngineException>(() => second.InitializeAsync(new EngineSettings(), None));
             output.WriteLine($"Reinicio en el mismo proceso rechazado: {ex.Message}");
+
+            // El puente registra un manejador de tareas de UI: libobs no debe descartar ninguna (arranque, uso y apagado).
+            lock (lines)
+                Assert.DoesNotContain(lines, l => l.Contains("UI task could not be queued"));
         }
         finally
         {
