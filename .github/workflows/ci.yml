@@ -1,0 +1,76 @@
+# Integración continua: en cada push a main y en cada pull request.
+#   - tests: compila la solución y pasa las pruebas unitarias (no necesitan libobs: el motor es falso y la prueba
+#     del puente acepta que falte la DLL).
+#   - native: compila el puente C/C++ contra el runtime de libobs como lo hace el workflow release, para que un
+#     error en native/ aparezca en el push y no al crear la etiqueta de una versión.
+# Las pruebas contra libobs real (tests/LiveStream.IntegrationTests) necesitan GPU y escritorio: se ejecutan en local.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OBS_VERSION: '32.2.2'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  tests:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Compilar
+        run: dotnet build LiveStream.sln -c Release
+
+      - name: Pruebas unitarias
+        run: dotnet test tests/LiveStream.UnitTests -c Release --no-build --logger "trx;LogFileName=unit.trx" --results-directory artifacts/test-results
+
+      - name: Subir resultados si fallan
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results/
+          retention-days: 7
+
+  native:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Binarios de OBS Studio ${{ env.OBS_VERSION }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download $env:OBS_VERSION -R obsproject/obs-studio -p "OBS-Studio-$env:OBS_VERSION-Windows-x64.zip" -D $env:RUNNER_TEMP
+          Expand-Archive "$env:RUNNER_TEMP/OBS-Studio-$env:OBS_VERSION-Windows-x64.zip" "$env:RUNNER_TEMP/obs"
+
+      - name: Puente nativo y runtime de libobs
+        run: ./scripts/build-native.ps1 -ObsTag $env:OBS_VERSION -ObsInstallDir "$env:RUNNER_TEMP/obs"
+
+      - name: El puente quedó en el runtime
+        run: |
+          if (-not (Test-Path artifacts/obs-runtime/livestream_bridge.dll)) { throw 'No se generó livestream_bridge.dll.' }
