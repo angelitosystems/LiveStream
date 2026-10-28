@@ -105,6 +105,11 @@ Ejemplo (consultar el estado):
 
 En .NET, `JsonRpcPeer` resuelve el entramado. Mira `sdk/examples/HelloPlugin/Program.cs`, unas 60 líneas.
 
+`PluginClient` va un paso más allá: responde a `initialize`/`shutdown`, guarda los ajustes (`Setting`, `Number`),
+entrega los eventos de uno en uno fuera del hilo de lectura y ofrece `CallToolAsync`, `StudioStateAsync` y
+`EnsureGraphicAsync`. Los plugins oficiales (rotador de titulares, rótulo automático de escena y marcador desde
+archivo) lo usan y caben en unas 50 líneas cada uno; su código vive en el repositorio privado del marketplace.
+
 ## 5. Crear, probar y empaquetar
 
 Instala el SDK con `LiveStream-SDK-Setup-<versión>.exe`, de la
